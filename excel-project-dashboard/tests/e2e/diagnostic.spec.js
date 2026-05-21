@@ -1,9 +1,18 @@
 import { test } from '@playwright/test';
 
-test('diagnostic - get page HTML', async ({ page }) => {
+test('diagnostic - capture errors', async ({ page }) => {
+  const errors = [];
+  page.on('console', msg => {
+    if (msg.type() === 'error') errors.push(msg.text());
+  });
+  page.on('pageerror', err => errors.push(err.message));
+
   await page.goto('/');
-  await page.waitForTimeout(2000);
-  const html = await page.content();
-  console.log(html.substring(0, 3000));
-  await page.screenshot({ path: 'tests/e2e/diagnostic.png' });
+  await page.waitForTimeout(3000);
+
+  console.log('--- console errors ---');
+  errors.forEach(e => console.log(e));
+  console.log('--- app div ---');
+  const html = await page.locator('#app').innerHTML();
+  console.log(html);
 });
