@@ -4,8 +4,24 @@
 
   <!-- 主容器区域 -->
   <div class="main-container">
-    <!-- 区域 A：全局过滤器栏 -->
+    <!-- 区域 A：数据导入 -->
+    <div class="upload-section">
+      <div class="section-header">
+        <span class="section-badge badge-a">A</span>
+        <span class="section-title">数据导入</span>
+      </div>
+      <UploadArea
+        @file-uploaded="handleFileUploaded"
+        @file-error="handleFileError"
+      />
+    </div>
+
+    <!-- 区域 B：数据筛选 -->
     <div class="filter-bar">
+      <div class="section-header">
+        <span class="section-badge badge-b">B</span>
+        <span class="section-title">数据筛选</span>
+      </div>
       <div class="filter-container">
         <div class="filter-item">
           <label class="filter-label">时间范围</label>
@@ -27,24 +43,25 @@
       </div>
     </div>
 
-    <!-- 区域 B：上传区域 -->
-    <div class="upload-section">
-      <UploadArea
-        @file-uploaded="handleFileUploaded"
-        @file-error="handleFileError"
-      />
-    </div>
-
-    <!-- 区域 C：KPI概览卡片区 -->
+    <!-- 区域 C：KPI 概览 -->
     <div class="kpi-section">
+      <div class="section-header">
+        <span class="section-badge badge-c">C</span>
+        <span class="section-title">KPI 概览</span>
+      </div>
       <KpiCards :kpiData="kpiData" />
     </div>
 
-    <!-- 区域 D：项目明细数据区 -->
+    <!-- 区域 D：项目明细 -->
     <div class="project-detail-section">
+      <div class="section-header">
+        <span class="section-badge badge-d">D</span>
+        <span class="section-title">项目明细</span>
+      </div>
       <ProjectTable
         :projects="filteredProjects"
         :projectType="filters.projectType"
+        :dateRange="filters.dateRange"
         @export="handleExport"
         @open-detail="handleOpenDetail"
       />
@@ -63,7 +80,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed } from 'vue';
 import { useProjectData } from '../../composables/useProjectData';
 import { useToast } from '../../composables/useToast';
 import { ProjectType } from '../../constants/projectStatus';
@@ -74,45 +91,21 @@ import KpiCards from '../KpiCards/KpiCards.vue';
 import ProjectTable from '../ProjectTable/ProjectTable.vue';
 import EmptyState from '../common/EmptyState.vue';
 import UploadArea from '../UploadArea/UploadArea.vue';
-import { generateMockProjects } from '../../data/projectData';
 
-const { filters, kpiData, updateFilters, applyFilters } = useProjectData();
+const { filters, kpiData, projects, updateFilters, applyFilters } = useProjectData();
 const { toast, showSuccess, showError, showToast } = useToast();
 
 const isLoading = ref(false);
-const projects = ref([]);
 
 // 计算过滤后的项目列表
 const filteredProjects = computed(() => {
   return applyFilters();
 });
 
-// 初始化数据
-onMounted(() => {
-  loadMockData();
-});
-
-// 加载模拟数据
-const loadMockData = () => {
-  try {
-    projects.value = generateMockProjects();
-    showSuccess('数据加载成功');
-  } catch (error) {
-    showError('数据加载失败：' + error.message);
-  }
-};
-
 // 处理查询
 const handleQuery = () => {
-  isLoading.value = true;
-  try {
-    // 这里可以添加实际的数据查询逻辑
-    showSuccess('查询成功');
-  } catch (error) {
-    showError('查询失败：' + error.message);
-  } finally {
-    isLoading.value = false;
-  }
+  // KPI 由 computed 自动响应 filters 变化重新计算
+  showSuccess('查询成功');
 };
 
 // 处理导出
@@ -134,29 +127,10 @@ const handleOpenDetail = (projectId) => {
 // 处理文件上传成功
 const handleFileUploaded = (fileData) => {
   try {
-    // 将上传的项目数据添加到现有数据中
     const newProjects = fileData.data;
-
-    // 为新数据添加必要的字段，兼容现有格式
-    const enhancedProjects = newProjects.map(project => ({
-      ...project,
-      // 确保有必要的日期字段用于表格显示
-      planInitialDate: project.planInitialDate || project.startDate,
-      actualInitialDate: project.actualInitialDate || '',
-      planFinalDate: project.planFinalDate || '',
-      actualFinalDate: project.actualFinalDate || '',
-      // 确保有项目编号
-      projectCode: project.projectCode || `PRJ-${Date.now()}-${Math.floor(Math.random() * 1000)}`
-    }));
-
-    // 更新项目列表
-    projects.value = [...projects.value, ...enhancedProjects];
-
-    // 更新KPI数据
-    updateKPIData(enhancedProjects);
-
-    showToast(`成功导入 ${enhancedProjects.length} 个项目`, 'success');
-    console.log('导入的项目数据:', enhancedProjects);
+    // 替换为上传的数据（每次上传覆盖之前的项目列表，因为一个Excel就是一个完整台账）
+    projects.value = newProjects;
+    showSuccess(`成功导入 ${newProjects.length} 个项目（${fileData.fileName}）`);
   } catch (error) {
     showError('导入数据失败：' + error.message);
   }
@@ -165,28 +139,6 @@ const handleFileUploaded = (fileData) => {
 // 处理文件上传错误
 const handleFileError = (error) => {
   showError(error.message);
-};
-
-// 更新KPI数据
-const updateKPIData = (newProjects) => {
-  // 计算新的KPI数据
-  const allProjects = [...projects.value, ...newProjects];
-
-  // 计算初验完成情况
-  const initialCompletedProjects = allProjects.filter(p => p.status === '已完成' && p.actualInitialDate);
-  const initialTargetAmount = allProjects.reduce((sum, p) => sum + (p.budget || 0), 0);
-  const initialCompletedAmount = initialCompletedProjects.reduce((sum, p) => sum + (p.budget || 0), 0);
-
-  // 计算终验完成情况（简化处理）
-  const finalCompletedProjects = allProjects.filter(p => p.status === '已完成' && p.actualFinalDate);
-
-  // 更新KPI数据
-  kpiData.value = {
-    completionRate: Math.round((initialCompletedProjects.length / allProjects.length) * 100) || 0,
-    targetAmount: initialTargetAmount,
-    completedAmount: initialCompletedAmount,
-    totalProjects: allProjects.length
-  };
 };
 
 // 重置筛选条件
@@ -206,7 +158,41 @@ const resetFilters = () => {
   margin: 0 auto;
 }
 
-/* Filter Bar - 区域 A */
+/* === 区域标题（A / B / C / D） === */
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.section-badge {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: white;
+  flex-shrink: 0;
+}
+
+.badge-a { background-color: #3b82f6; }
+.badge-b { background-color: #8b5cf6; }
+.badge-c { background-color: #10b981; }
+.badge-d { background-color: #f59e0b; }
+
+.section-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #374151;
+}
+
+/* === 区域 A：数据筛选 === */
 .filter-bar {
   background-color: white;
   border-radius: 0.5rem;
@@ -255,12 +241,7 @@ const resetFilters = () => {
   cursor: not-allowed;
 }
 
-/* KPI Section - 区域 B */
-.kpi-section {
-  margin-bottom: 1.5rem;
-}
-
-/* Upload Section - 区域 B */
+/* === 区域 B：数据导入 === */
 .upload-section {
   background-color: white;
   border-radius: 0.5rem;
@@ -269,12 +250,12 @@ const resetFilters = () => {
   padding: 1.5rem;
 }
 
-/* KPI Section - 区域 C */
+/* === 区域 C：KPI 概览 === */
 .kpi-section {
   margin-bottom: 1.5rem;
 }
 
-/* Project Detail Section - 区域 D */
+/* === 区域 D：项目明细 === */
 .project-detail-section {
   background-color: white;
   border-radius: 0.5rem;

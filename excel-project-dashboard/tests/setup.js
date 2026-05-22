@@ -1,7 +1,5 @@
-// Test setup file
 import { vi } from 'vitest';
 
-// Mock XLSX for tests
 vi.mock('xlsx', () => ({
   read: vi.fn(),
   utils: {

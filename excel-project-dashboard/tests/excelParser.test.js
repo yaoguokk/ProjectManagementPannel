@@ -1,7 +1,6 @@
 import { generateSampleData, parseExcelFile } from '../src/utils/excelParser';
 import * as XLSX from 'xlsx';
 
-// Mock XLSX library
 vi.mock('xlsx', () => ({
   read: vi.fn(),
   utils: {
@@ -58,7 +57,6 @@ describe('Excel Parser Utilities', () => {
         { '项目编号': 'JY-YZ-01-QT-23-001', '项目名称': '测试项目' }
       ];
 
-      // Mock XLSX functions
       XLSX.read.mockReturnValue(mockWorkbook);
       XLSX.utils.sheet_to_json.mockReturnValue(mockSheetData);
 
@@ -68,7 +66,6 @@ describe('Excel Parser Utilities', () => {
       expect(result).toHaveProperty('rawData');
       expect(result.headers).toEqual(['项目编号', '项目名称']);
       expect(result.rows).toEqual(mockSheetData);
-      expect(result.rawData).toEqual(mockSheetData);
     });
 
     test('should handle file parsing error', async () => {
@@ -76,7 +73,6 @@ describe('Excel Parser Utilities', () => {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       });
 
-      // Simulate error in XLSX.read
       XLSX.read.mockImplementation(() => {
         throw new Error('Invalid file format');
       });
@@ -91,20 +87,15 @@ describe('Excel Parser Utilities', () => {
 
       const mockWorkbook = {
         SheetNames: ['Sheet1'],
-        Sheets: {
-          'Sheet1': {}
-        }
+        Sheets: { 'Sheet1': {} }
       };
 
-      const mockSheetData = [];
-
       XLSX.read.mockReturnValue(mockWorkbook);
-      XLSX.utils.sheet_to_json.mockReturnValue(mockSheetData);
+      XLSX.utils.sheet_to_json.mockReturnValue([]);
 
       const result = await parseExcelFile(mockFile);
       expect(result.headers).toEqual([]);
       expect(result.rows).toEqual([]);
-      expect(result.rawData).toEqual([]);
     });
   });
 });

@@ -18,6 +18,7 @@
       <div class="upload-text">
         <h3 class="upload-title">拖拽 Excel 文件到此处或点击上传</h3>
         <p class="upload-subtitle">支持 .xlsx 和 .xls 格式</p>
+        <p class="upload-hint">经营项目请上传含"经营项目台账明细列表"的Excel文件，自筹项目请上传含"自筹项目台账列表"的Excel文件</p>
       </div>
 
       <button class="upload-btn">
@@ -181,8 +182,8 @@ const handleFile = async (file) => {
     // 解析 Excel 文件
     const result = await parseExcelFile(file);
 
-    // 应用数据清洗规则
-    const cleanedData = cleanExcelData(result.rawData);
+    // 应用数据清洗规则（传入文件名用于判定项目类型）
+    const cleanedData = cleanExcelData(result.rawData, file.name);
 
     clearInterval(progressInterval);
     uploadProgress.value = 100;
@@ -257,7 +258,7 @@ const formatFileSize = (bytes) => {
 }
 
 .upload-content {
-  pointer-events: none;
+  cursor: pointer;
 }
 
 .upload-icon {
@@ -279,7 +280,17 @@ const formatFileSize = (bytes) => {
 .upload-subtitle {
   font-size: 0.875rem;
   color: #6b7280;
+  margin-bottom: 0.5rem;
+}
+
+.upload-hint {
+  font-size: 0.75rem;
+  color: #f59e0b;
   margin-bottom: 1.5rem;
+  max-width: 500px;
+  margin-left: auto;
+  margin-right: auto;
+  line-height: 1.4;
 }
 
 .upload-btn {

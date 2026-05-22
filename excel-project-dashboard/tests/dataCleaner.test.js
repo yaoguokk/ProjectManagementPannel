@@ -9,7 +9,6 @@ import {
 describe('Data Cleaner Utilities', () => {
   describe('formatDate', () => {
     test('should format Excel date serial number correctly', () => {
-      // Excel date 44197 corresponds to 2020-12-31 (adjusting for timezone)
       expect(formatDate(44197)).toBe('2020-12-31');
     });
 
@@ -83,10 +82,9 @@ describe('Data Cleaner Utilities', () => {
 
     test('should filter total rows', () => {
       const result = cleanExcelData(mockExcelData);
-      // 应该过滤掉"合计"行，但保留空项目名称（会被赋予默认值）
       expect(result).toHaveLength(3);
       expect(result[0].projectName).toBe('智慧城市');
-      expect(result[1].projectName).toBe('项目2'); // 默认值
+      expect(result[1].projectName).toBe('项目2');
       expect(result[2].projectName).toBe('数据平台');
     });
 

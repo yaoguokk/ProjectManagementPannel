@@ -162,41 +162,43 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(['update:kpiData']);
-
 // 初验数据
-const initialCompletionRate = computed(() => {
-  return props.kpiData.completionRate || 0;
-});
+const initialData = computed(() => props.kpiData?.initial || {});
+const finalData = computed(() => props.kpiData?.final || {});
 
-const initialTargetAmount = computed(() => {
-  return props.kpiData.targetAmount || 0;
-});
-
-const initialCompletedAmount = computed(() => {
-  return props.kpiData.completedAmount || 0;
-});
-
-const initialTotalProjects = computed(() => {
-  return props.kpiData.totalProjects || 0;
-});
+const initialCompletionRate = computed(() => initialData.value.completionRate || 0);
+const initialTargetAmount = computed(() => initialData.value.targetAmount || 0);
+const initialCompletedAmount = computed(() => initialData.value.completedAmount || 0);
+const initialTotalProjects = computed(() => initialData.value.totalProjects || 0);
 
 // 终验数据
-const finalCompletionRate = computed(() => {
-  return props.kpiData.completionRate || 0;
-});
+const finalCompletionRate = computed(() => finalData.value.completionRate || 0);
+const finalTargetAmount = computed(() => finalData.value.targetAmount || 0);
+const finalCompletedAmount = computed(() => finalData.value.completedAmount || 0);
+const finalTotalProjects = computed(() => finalData.value.totalProjects || 0);
 
-const finalTargetAmount = computed(() => {
-  return props.kpiData.targetAmount || 0;
+// 细分表格数据（展示经营/自筹合计，取初验+终验的总和）
+const businessTargetAmount = computed(() =>
+  (initialData.value.businessTargetAmount || 0) + (finalData.value.businessTargetAmount || 0));
+const businessCompletedAmount = computed(() =>
+  (initialData.value.businessCompletedAmount || 0) + (finalData.value.businessCompletedAmount || 0));
+const businessCompletionRate = computed(() => {
+  const total = businessTargetAmount.value;
+  return total > 0 ? Math.round((businessCompletedAmount.value / total) * 100) : 0;
 });
+const businessProjects = computed(() =>
+  (initialData.value.businessProjects || 0) + (finalData.value.businessProjects || 0));
 
-const finalCompletedAmount = computed(() => {
-  return props.kpiData.completedAmount || 0;
+const selfTargetAmount = computed(() =>
+  (initialData.value.selfTargetAmount || 0) + (finalData.value.selfTargetAmount || 0));
+const selfCompletedAmount = computed(() =>
+  (initialData.value.selfCompletedAmount || 0) + (finalData.value.selfCompletedAmount || 0));
+const selfCompletionRate = computed(() => {
+  const total = selfTargetAmount.value;
+  return total > 0 ? Math.round((selfCompletedAmount.value / total) * 100) : 0;
 });
-
-const finalTotalProjects = computed(() => {
-  return props.kpiData.totalProjects || 0;
-});
+const selfProjects = computed(() =>
+  (initialData.value.selfProjects || 0) + (finalData.value.selfProjects || 0));
 
 const initialCircleOffset = computed(() => {
   const circumference = 2 * Math.PI * 54;

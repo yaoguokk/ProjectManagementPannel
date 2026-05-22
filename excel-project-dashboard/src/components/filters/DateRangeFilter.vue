@@ -48,7 +48,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 
 const props = defineProps({
   dateRange: {
@@ -77,7 +77,7 @@ const currentMonthRange = computed(() => {
   };
 });
 
-// 初始化日期范围
+// 初始化日期范围 — 挂载后自动 emit 确保 B/C/D 区域有初始值
 if (props.dateRange.start && props.dateRange.end) {
   startDate.value = props.dateRange.start;
   endDate.value = props.dateRange.end;
@@ -86,6 +86,10 @@ if (props.dateRange.start && props.dateRange.end) {
   startDate.value = currentMonthRange.value.start;
   endDate.value = currentMonthRange.value.end;
 }
+
+onMounted(() => {
+  emitDateRange();
+});
 
 const setDateRange = (type) => {
   dateRangeType.value = type;

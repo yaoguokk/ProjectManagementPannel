@@ -31,18 +31,18 @@
             全部
           </button>
           <button
-            @click="setStatusFilter('completed')"
+            @click="setStatusFilter('accepted')"
             class="status-btn"
-            :class="{ 'active': statusFilter === 'completed' }"
+            :class="{ 'active': statusFilter === 'accepted' }"
           >
-            已按期完成
+            已验收
           </button>
           <button
-            @click="setStatusFilter('incomplete')"
+            @click="setStatusFilter('pending')"
             class="status-btn"
-            :class="{ 'active': statusFilter === 'incomplete' }"
+            :class="{ 'active': statusFilter === 'pending' }"
           >
-            未完成/延期
+            待验收/待结算
           </button>
         </div>
       </div>
@@ -186,6 +186,10 @@ const props = defineProps({
   projectType: {
     type: String,
     default: 'all'
+  },
+  dateRange: {
+    type: Object,
+    default: () => ({ start: '', end: '' })
   }
 });
 
@@ -197,36 +201,44 @@ const statusFilter = ref('all');
 const pageSize = ref(10);
 const currentPage = ref(1);
 
+// 判断日期是否在选定时间范围内
+const isDateInRange = (dateStr) => {
+  if (!dateStr) return false;
+  const hasRange = props.dateRange?.start && props.dateRange?.end;
+  if (!hasRange) return false;
+  const d = new Date(dateStr);
+  return d >= new Date(props.dateRange.start) && d <= new Date(props.dateRange.end);
+};
+
 const filteredProjects = computed(() => {
   let filtered = props.projects;
 
   // 按项目类型过滤
-  if (props.projectType !== 'all') {
+  if (props.projectType !== '全部') {
     filtered = filtered.filter(project =>
-      project.projectType === (props.projectType === 'business' ? '经营项目' : '自筹项目')
+      project.projectType === props.projectType
     );
   }
 
-  // 按Tab过滤
+  // 按Tab + 时间范围过滤
   filtered = filtered.filter(project => {
-    if (currentTab.value === 'initial') {
-      return project.planInitialDate && project.actualInitialDate;
-    } else {
-      return project.planFinalDate && project.actualFinalDate;
-    }
+    const planDate = currentTab.value === 'initial'
+      ? project.planInitialDate
+      : project.planFinalDate;
+    return isDateInRange(planDate);
   });
 
-  // 按状态过滤
+  // 按状态过滤：基于实际日期是否为空
   if (statusFilter.value !== 'all') {
     filtered = filtered.filter(project => {
-      const isCompleted = project.status === '已完成';
-      const isIncomplete = project.status === '未完成';
-      const isDelayed = project.status === '已延期';
+      const actualDate = currentTab.value === 'initial'
+        ? project.actualInitialDate
+        : project.actualFinalDate;
 
-      if (statusFilter.value === 'completed') {
-        return isCompleted;
-      } else if (statusFilter.value === 'incomplete') {
-        return isIncomplete || isDelayed;
+      if (statusFilter.value === 'accepted') {
+        return !!actualDate;
+      } else if (statusFilter.value === 'pending') {
+        return !actualDate;
       }
       return true;
     });
@@ -294,12 +306,12 @@ const nextPage = () => {
 
 const getStatusClass = (status) => {
   switch (status) {
-    case '已完成':
+    case '已结算':
       return 'status-completed';
-    case '未完成':
-      return 'status-incomplete';
-    case '已延期':
-      return 'status-delayed';
+    case '待初验':
+    case '待终验':
+    case '待结算':
+      return 'status-pending';
     default:
       return '';
   }
@@ -531,14 +543,9 @@ const openProjectDetail = (projectId) => {
   color: #065f46;
 }
 
-.status-incomplete {
-  background-color: #fed7aa;
+.status-pending {
+  background-color: #fef3c7;
   color: #92400e;
-}
-
-.status-delayed {
-  background-color: #fee2e2;
-  color: #991b1b;
 }
 
 /* 空状态 */

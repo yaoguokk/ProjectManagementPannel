@@ -30,7 +30,7 @@ export const useProjectData = () => {
   };
 
   /**
-   * 应用过滤条件获取项目列表
+   * 应用过滤条件获取项目列表（仅按项目类型过滤，日期范围只影响KPI）
    * @returns {Array} 过滤后的项目列表
    */
   const applyFilters = () => {
@@ -41,20 +41,6 @@ export const useProjectData = () => {
       filtered = filtered.filter(project =>
         project.projectType === filters.value.projectType
       );
-    }
-
-    // 按时间范围过滤
-    if (filters.value.dateRange && filters.value.dateRange.start && filters.value.dateRange.end) {
-      const startDate = new Date(filters.value.dateRange.start);
-      const endDate = new Date(filters.value.dateRange.end);
-
-      filtered = filtered.filter(project => {
-        const planInitialDate = new Date(project.planInitialDate);
-        const planFinalDate = new Date(project.planFinalDate);
-
-        return (planInitialDate >= startDate && planInitialDate <= endDate) ||
-               (planFinalDate >= startDate && planFinalDate <= endDate);
-      });
     }
 
     return filtered;

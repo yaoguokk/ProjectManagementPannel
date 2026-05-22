@@ -1,161 +1,214 @@
-# Excel 项目台账数据清洗与展示 SPA 应用 - 项目记录
-
-## 项目概述
-这是一个基于 Vue 3 + Vite 的单页应用（SPA），用于 Excel 项目台账数据的清洗、处理和可视化展示。所有数据操作在前端内存中完成，支持本地文件上传和处理。
+# Excel 项目台账数据清洗与展示 SPA 应用
 
 ## 技术栈
-- Vue 3 + Vite
-- Composition API
+- Vue 3 + Vite + Composition API
 - Tailwind CSS v4
 - xlsx (SheetJS) - Excel 文件解析
-- ECharts (待添加) - 数据可视化
-
-## 项目结构
-```
-src/
-├── components/
-│   ├── Dashboard/          # 主界面组件
-│   ├── UploadArea/         # Excel 文件上传
-│   ├── KpiCards/          # KPI 指标卡片
-│   ├── ProjectTable/      # 项目数据表格
-│   ├── filters/           # 过滤器组件
-│   └── common/           # 通用组件
-├── utils/
-│   ├── excelParser.js    # Excel 解析工具
-│   └── dataCleaner.js    # 数据清洗工具
-├── data/
-│   └── projectData.js    # 示例数据
-├── composables/          # 组合式函数
-└── constants/           # 常量定义
-```
-
-## 已完成功能
-
-### 1. Excel 文件上传与解析
-- **位置**: `/src/components/UploadArea/UploadArea.vue`
-- **功能**: 
-  - 拖拽上传和点击上传
-  - 文件类型验证（.xlsx, .xls）
-  - 上传进度显示
-  - 文件状态管理
-
-### 2. 数据清洗规则
-- **位置**: `/src/utils/dataCleaner.js`
-- **规则**:
-  - 过滤空行和"合计"行
-  - 去除字符串前后空格
-  - 统一日期格式为 YYYY-MM-DD
-  - 清洗金额字段（去除¥、$、等符号）
-
-### 3. KPI 指标展示
-- **位置**: `/src/components/KpiCards/KpiCards.vue`
-- **功能**: 环形进度图展示完成率
-
-### 4. 项目数据表格
-- **位置**: `/src/components/ProjectTable/ProjectTable.vue`
-- **功能**: 
-  - 双层 Tab 切换
-  - 搜索和筛选
-  - 分页功能
-  - 导出功能（待完善）
-
-## 变更记录
-
-### 🐛 已修复的问题
-
-#### 1. 图标大小问题 (2026-05-21)
-- **问题描述**: UploadArea 上传图标和 ProjectTable 空状态图标过大
-- **修复方案**:
-  - UploadArea: `h-12 w-12` → `h-8 w-8`
-  - ProjectTable: `48px` → `32px`
-- **文件位置**:
-  - `src/components/UploadArea/UploadArea.vue:13`
-  - `src/components/ProjectTable/ProjectTable.vue:550-552`
-
-#### 2. CSS 配置问题 (2026-05-21)
-- **问题描述**: Tailwind CSS v4 配置缺少必要依赖
-- **修复方案**: 安装 `autoprefixer` 和 `@tailwindcss/postcss`
-- **文件位置**: `postcss.config.js`
-
-### 📝 关键修改记录
-
-#### 数据清洗功能实现
-```javascript
-// 新增 cleanExcelData 函数 (dataCleaner.js)
-export const cleanExcelData = (rawData) => {
-  // 1. 过滤空行
-  // 2. 过滤合计行
-  // 3. 字段清洗和格式化
-  // 4. 返回清洗后的数据
-}
-```
-
-#### Dashboard 组件更新
-```vue
-<!-- 添加上传区域 -->
-<div class="upload-section">
-  <UploadArea
-    @file-uploaded="handleFileUploaded"
-    @file-error="handleFileError"
-  />
-</div>
-```
-
-## 开发规范
-
-### 1. 代码结构
-- 单个 .vue 文件不超过 200 行
-- 逻辑与视图分离
-- 使用 Composition API
-
-### 2. 命名规范
-- 语义化命名
-- 避免魔法数字
-- 使用常量定义状态
-
-### 3. 错误处理
-- Excel 解析使用 try-catch
-- 提供友好的错误提示
-- 显示空状态页面
-
-## 测试要点
-
-### 1. 功能测试
-- Excel 文件上传和解析
-- 数据清洗规则验证
-- 图表数据准确性
-- 表格功能测试
-
-### 2. 边界情况
-- 空文件处理
-- 格式错误的 Excel
-- 大文件处理
-- 网络异常情况
-
-## 下一步计划
-
-### 1. 数据可视化
-- 添加 ECharts 图表
-- 状态分布饼图
-- 部门分布柱状图
-- 月度趋势折线图
-
-### 2. 功能完善
-- 高级筛选功能
-- Excel 导出功能
-- 数据缓存机制
-
-### 3. 性能优化
-- 大数据量处理
-- 组件懒加载
-- 防抖和节流
-
-## 文档
-- `CHANGELOG.md` - 详细的变更记录
-- `DEVELOPMENT_LOG.md` - 开发过程日志
-- `README.md` - 项目说明文档
 
 ---
 
-**维护状态**: 开发中  
-**最后更新**: 2026-05-21
+## 当前 UI 布局（4 区域）
+
+```
+┌─ A 数据导入 ───────────────────────┐
+│  UploadArea.vue                    │  上传 Excel 文件
+└────────────────────────────────────┘
+┌─ B 数据筛选 ───────────────────────┐
+│  DateRangeFilter + ProjectTypeFilter│  时间范围 + 项目类型
+└────────────────────────────────────┘
+┌─ C KPI 概览 ──────────────────────┐
+│  KpiCards.vue                      │  初验完成率 / 终验完成率 / 细分表
+└────────────────────────────────────┘
+┌─ D 项目明细 ──────────────────────┐
+│  ProjectTable.vue                  │  初验Tab / 终验Tab / 状态筛选 / 表格
+└────────────────────────────────────┘
+```
+
+---
+
+## 核心业务逻辑 & 数据流
+
+### 步骤 1: A 区域 — Excel 上传与清洗
+
+```
+UploadArea.vue (line 159 handleFile)
+  │
+  ├─ parseExcelFile(file)           → src/utils/excelParser.js:8
+  │   使用 SheetJS 读取, sheet_to_json(ws, { defval: '' })
+  │   返回 { headers, rows: rawData, rawData }
+  │
+  ├─ cleanExcelData(rawData, file.name)  → src/utils/dataCleaner.js:14
+  │   过滤1: 排除 立项方式 === "基于商机立项"
+  │   过滤2: 只保留 项目状态 ∈ [待结算, 已结算, 待终验, 待初验]
+  │   判定: 文件名含"经营项目台账明细列表" → projectType='经营项目'
+  │         文件名含"自筹项目台账列表"     → projectType='自筹项目'
+  │   映射: 77列Excel → 12个程序字段 (精确列名匹配, 非关键词)
+  │
+  └─ emit('file-uploaded', { data: 45行, fileName })
+      ↓
+Dashboard.vue (line 128 handleFileUploaded)
+  projects.value = fileData.data   → 写入 composable 的 projects ref
+```
+
+### 步骤 2: B 区域 — 筛选条件
+
+```
+useProjectData.js (src/composables/useProjectData.js)
+  filters = ref({
+    dateRange:   { start: '', end: '', type: 'month' },
+    projectType: '经营项目'   // ProjectType.BUSINESS
+  })
+
+DateRangeFilter.vue (src/components/filters/DateRangeFilter.vue)
+  默认: dateRangeType='month' → 计算本月起止日期
+  支持: 本月 / 自定义 (两个date input)
+  v-model:dateRange → 更新 filters.dateRange
+  ⚠️ 已添加 onMounted(() => emitDateRange()) 修复初始不emit的问题 (line 87)
+
+ProjectTypeFilter.vue (src/components/filters/ProjectTypeFilter.vue)
+  下拉: 经营项目 / 自筹项目 / 全部
+```
+
+### 步骤 3: C 区域 — KPI 计算
+
+```
+useProjectData.js (line 20)
+  kpiData = computed(() => calculateKpiData(projects.value, filters.value))
+      ↓
+projectData.js (src/data/projectData.js line 73 calculateKpiData)
+  返回 { initial: {...}, final: {...} }
+
+  初验计算 (calculatePhaseData, phase='initial'):
+    统计范围 = planInitialDate ∈ [dateRange]
+    计划金额 = sum(budget)
+    完成金额 = sum(budget) where actualInitialDate ≠ 空
+    完成率 = 完成金额 / 计划金额 × 100%
+
+  终验计算 (phase='final'):
+    同上，但使用 planFinalDate / actualFinalDate
+
+  细分: 按 projectType ('经营项目'/'自筹项目') 分别统计
+
+KpiCards.vue (src/components/KpiCards/KpiCards.vue)
+  读取 kpiData.initial.xxx 和 kpiData.final.xxx
+  展示环形进度图 + 细分表格
+```
+
+### 步骤 4: D 区域 — 项目明细表格
+
+```
+Dashboard.vue (line 101)
+  filteredProjects = computed(() => applyFilters())
+    applyFilters(): 仅按 projectType 过滤, 不过滤日期
+    ↓
+  传给 ProjectTable: :projects="filteredProjects" :dateRange="filters.dateRange"
+
+ProjectTable.vue (src/components/ProjectTable/ProjectTable.vue)
+  filteredProjects computed (line 213) — 4层过滤叠加:
+
+  第1层 — 项目类型 (line 217-221):
+    if (props.projectType !== 'all')
+      → filter(projectType === '经营项目' or '自筹项目')
+
+  第2层 — Tab + 时间范围 (line 224-229):  ← 🔴 当前问题所在
+    初验Tab: isDateInRange(project.planInitialDate)
+    终验Tab: isDateInRange(project.planFinalDate)
+
+  第3层 — 状态筛选 (line 232-244):
+    已验收:       actualDate ≠ 空
+    待验收/待结算: actualDate = 空
+
+  第4层 — 搜索 (line 248-253)
+
+  isDateInRange 函数 (line 205-211):
+    if (!dateStr) return false           // 计划日期为空 → 排除
+    if (!hasRange) return false          // dateRange为空 → 排除全部!
+    return dateStr ∈ [start, end]
+```
+
+---
+
+## 🔴 已修复的 Bug 记录
+
+### Bug #1: DateRangeFilter 初始不 emit
+- **现象**: D区域无数据
+- **根因**: `DateRangeFilter` 初始不emit导致 `filters.dateRange = { start: '', end: '' }`，`isDateInRange` 全部返回 false
+- **修复**: 加了 `onMounted(() => emitDateRange())`，初始默认本月日期范围
+- **日期**: 2026-05-22 之前
+
+### Bug #2: ProjectTable 项目类型过滤用英文比较 — D区域永远无数据 （2026-05-22 修复）
+- **现象**: 上传数据后 D 区域始终空，"全部/经营项目/自筹项目"切换均无数据
+- **根因**: [ProjectTable.vue:217-219](src/components/ProjectTable/ProjectTable.vue#L217-L219) 用英文 `'business'` / `'all'` 比较中文常量 `'经营项目'` / `'全部'`，永远匹配不上。`'经营项目' === 'business'` → false → 走了 else 分支按 `'自筹项目'` 过滤 → 所有经营项目被排除
+- **修复**: 改为直接用 `props.projectType` 比较（因为值本身就是中文）
+  ```js
+  // 修复前
+  if (props.projectType !== 'all') {
+    project.projectType === (props.projectType === 'business' ? '经营项目' : '自筹项目')
+  }
+  // 修复后
+  if (props.projectType !== '全部') {
+    project.projectType === props.projectType
+  }
+  ```
+
+---
+
+## ⚠️ 重要：这是中文数据项目！
+
+**所有数据值、常量、比较字符串都是中文，禁止使用英文关键词！**
+
+| 分类 | 正确的值（中文） | ❌ 禁止使用 |
+|------|-----------------|------------|
+| 项目类型 | `'经营项目'`, `'自筹项目'`, `'全部'` | `'business'`, `'all'`, `'self_financed'` |
+| 项目状态 | `'待初验'`, `'待终验'`, `'待结算'`, `'已结算'`, `'已终止'` | `'pending'`, `'completed'` |
+| 立项方式 | `'基于商机立项'` | `'business_opportunity'` |
+| Excel列名 | `'项目计划初验时间含变更'`, `'立项收入(元)'`, `'业务部所'` 等 | — |
+
+**写任何 `===` 或 `switch` 比较前，先确认用的是中文值。**
+
+### Excel 列名映射 (77列 → 12字段)
+
+| 程序字段 | Excel 列名 | 用途 |
+|---------|-----------|------|
+| projectCode | 项目编号 | 表格展示 |
+| projectName | 项目名称 | 表格展示 |
+| manager | 项目经理 | 表格展示 |
+| department | 业务部所 | 表格展示 |
+| projectType | 项目类型(列值) 或 文件名判定 | 表格+KPI分类 |
+| budget | 立项收入(元) | KPI金额计算 |
+| planInitialDate | 项目计划初验时间含变更 | C+D初验筛选 |
+| planFinalDate | 项目计划终验时间含变更 | C+D终验筛选 |
+| actualInitialDate | 项目实际初验时间 | KPI完成判定+D状态 |
+| actualFinalDate | 项目实际终验时间 | KPI完成判定+D状态 |
+| startDate | 立项审批完成时间 | 表格展示 |
+| status | 项目状态 | 表格展示+清洗过滤 |
+
+### 关键文件速查
+
+| 文件 | 作用 |
+|-----|------|
+| `src/components/Dashboard/Dashboard.vue` | 主界面, 4区域布局, 数据流枢纽 |
+| `src/components/UploadArea/UploadArea.vue` | A区域-文件上传 |
+| `src/components/ProjectTable/ProjectTable.vue` | D区域-表格, isDateInRange问题所在 |
+| `src/utils/dataCleaner.js` | 数据清洗, 精确列名映射 |
+| `src/utils/excelParser.js` | SheetJS解析 |
+| `src/data/projectData.js` | KPI计算公式 |
+| `src/composables/useProjectData.js` | filters状态, applyFilters, kpiData |
+| `src/components/filters/DateRangeFilter.vue` | B区域-时间范围选择 |
+| `src/components/KpiCards/KpiCards.vue` | C区域-KPI卡片 |
+
+### 测试数据位置
+```
+/Users/yao/Desktop/项目全景展示/excel upload file /经营项目台账明细列表_20260518161209541.xlsx
+```
+
+### 启动命令
+```bash
+cd /Users/yao/Desktop/项目全景展示/excel-project-dashboard
+npm run dev
+# → http://localhost:5173/
+```
+
+---
+
+**最后更新**: 2026-05-22
