@@ -4,6 +4,16 @@
 import * as XLSX from 'xlsx';
 
 /**
+ * 本地日期格式化，避免 toISOString 的 UTC 时区偏移
+ */
+const formatDateLocal = (date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
+/**
  * 生成模拟项目数据（用于无 Excel 时的默认展示）
  */
 export const generateMockProjects = () => {
@@ -28,11 +38,11 @@ export const generateMockProjects = () => {
       department: `部门${Math.floor(Math.random() * 5) + 1}`,
       projectType,
       budget,
-      planInitialDate: planInitialDate.toISOString().split('T')[0],
-      actualInitialDate: actualInitialDate ? actualInitialDate.toISOString().split('T')[0] : '',
-      planFinalDate: planFinalDate.toISOString().split('T')[0],
-      actualFinalDate: actualFinalDate ? actualFinalDate.toISOString().split('T')[0] : '',
-      startDate: planInitialDate.toISOString().split('T')[0],
+      planInitialDate: formatDateLocal(planInitialDate),
+      actualInitialDate: actualInitialDate ? formatDateLocal(actualInitialDate) : '',
+      planFinalDate: formatDateLocal(planFinalDate),
+      actualFinalDate: actualFinalDate ? formatDateLocal(actualFinalDate) : '',
+      startDate: formatDateLocal(planInitialDate),
       status: calculateMockStatus(planInitialDate, actualInitialDate),
     });
   }
@@ -55,10 +65,17 @@ const calculateMockStatus = (planDate, actualDate) => {
  */
 export const calculateKpiData = (projects, filters = {}) => {
   const dateRange = filters.dateRange || { start: '', end: '' };
+  const projectType = filters.projectType || '全部';
+
+  // 先按项目类型过滤
+  let filteredProjects = projects;
+  if (projectType !== '全部') {
+    filteredProjects = projects.filter((p) => p.projectType === projectType);
+  }
 
   return {
-    initial: calculatePhaseData(projects, 'initial', dateRange),
-    final: calculatePhaseData(projects, 'final', dateRange),
+    initial: calculatePhaseData(filteredProjects, 'initial', dateRange),
+    final: calculatePhaseData(filteredProjects, 'final', dateRange),
   };
 };
 

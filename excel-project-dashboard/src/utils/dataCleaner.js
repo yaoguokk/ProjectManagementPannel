@@ -4,7 +4,48 @@
  */
 
 /**
- * 清洗Excel数据 — 精确列名映射 + 过滤规则
+ * 清洗自筹项目 Excel 数据
+ * 自筹项目无"立项方式"列，金额单位为万元（需×10000转为元），列名与经营项目部分不同
+ */
+export const cleanSelfFundedData = (rawData, fileName = '') => {
+  if (!rawData || rawData.length === 0) return [];
+
+  const fileProjectType = '自筹项目';
+  const allowedStatuses = ['待结算', '已结算', '待终验', '待初验'];
+
+  return rawData
+    .filter((row) => {
+      const status = row['项目进度'];
+      if (!status || !allowedStatuses.includes(String(status).trim())) return false;
+      return true;
+    })
+    .map((row, index) => {
+      const rawFields = {};
+      Object.keys(row).forEach((key) => {
+        rawFields[key] = cleanString(row[key]);
+      });
+
+      return {
+        ...rawFields,
+        id: generateId(),
+        projectCode: cleanString(row['项目编号']) || `ZC-${index + 1}`,
+        projectName: cleanString(row['项目名称']) || `自筹项目${index + 1}`,
+        manager: cleanString(row['承办人']) || '未知',
+        department: cleanString(row['承接部门']) || '未知部门',
+        projectType: fileProjectType || cleanString(row['项目类型']) || '未知类型',
+        budget: (cleanNumber(row['投资总金额(万元)']) * 10000),
+        planInitialDate: formatDate(row['项目计划初验时间含变更']),
+        planFinalDate: formatDate(row['项目计划终验时间含变更']),
+        actualInitialDate: formatDate(row['实际初验时间']),
+        actualFinalDate: formatDate(row['实际终验时间']),
+        startDate: formatDate(row['批复完成时间']),
+        status: cleanString(row['项目进度']) || '未知状态',
+      };
+    });
+};
+
+/**
+ * 清洗经营项目 Excel 数据 — 精确列名映射 + 过滤规则
  * @param {Array} rawData - 原始数据数组
  * @param {string} fileName - 上传的文件名（用于判定项目类型）
  * @returns {Array} 清洗后的数据
@@ -93,7 +134,11 @@ export const formatDate = (date) => {
   }
 
   if (dateObj && !isNaN(dateObj.getTime())) {
-    return dateObj.toISOString().split('T')[0];
+    // 使用本地时间格式化，避免 toISOString 的 UTC 时区偏移
+    const y = dateObj.getFullYear();
+    const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const d = String(dateObj.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
   }
 
   return '';

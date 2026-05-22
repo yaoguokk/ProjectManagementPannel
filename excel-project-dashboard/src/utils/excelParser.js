@@ -5,7 +5,9 @@ import * as XLSX from 'xlsx';
  * @param {File} file - Excel文件
  * @returns {Promise<Object>} 返回解析后的数据
  */
-export const parseExcelFile = (file) => {
+export const parseExcelFile = (file, options = {}) => {
+  const { skipRows = 0 } = options;
+
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
 
@@ -15,6 +17,14 @@ export const parseExcelFile = (file) => {
         const workbook = XLSX.read(data, { type: 'array' });
         const firstSheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[firstSheetName];
+
+        // 跳过指定行数（从 sheet 的 !ref 范围中移除前 skipRows 行）
+        if (skipRows > 0) {
+          const range = XLSX.utils.decode_range(worksheet['!ref']);
+          range.s.r += skipRows;
+          worksheet['!ref'] = XLSX.utils.encode_range(range);
+        }
+
         const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
 
         // 获取表头

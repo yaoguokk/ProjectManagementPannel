@@ -10,10 +10,26 @@
         <span class="section-badge badge-a">A</span>
         <span class="section-title">数据导入</span>
       </div>
-      <UploadArea
-        @file-uploaded="handleFileUploaded"
-        @file-error="handleFileError"
-      />
+      <div class="upload-grid">
+        <div class="upload-col">
+          <UploadArea
+            accept-type="business"
+            title="经营项目台账上传"
+            description=”请上传文件名含【经营项目台账明细列表】的Excel文件”
+            @file-uploaded="handleFileUploaded"
+            @file-error="handleFileError"
+          />
+        </div>
+        <div class="upload-col">
+          <UploadArea
+            accept-type="self-funded"
+            title="自筹项目台账上传"
+            description="请上传文件名含【自筹项目台账列表】的Excel文件"
+            @file-uploaded="handleFileUploaded"
+            @file-error="handleFileError"
+          />
+        </div>
+      </div>
     </div>
 
     <!-- 区域 B：数据筛选 -->
@@ -80,7 +96,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useProjectData } from '../../composables/useProjectData';
 import { useToast } from '../../composables/useToast';
 import { ProjectType } from '../../constants/projectStatus';
@@ -96,6 +112,19 @@ const { filters, kpiData, projects, updateFilters, applyFilters } = useProjectDa
 const { toast, showSuccess, showError, showToast } = useToast();
 
 const isLoading = ref(false);
+const businessProjects = ref([]);
+const selfFundedProjects = ref([]);
+
+// 拼接项目列表：自筹在前，经营在后
+const allProjects = computed(() => [
+  ...selfFundedProjects.value,
+  ...businessProjects.value
+]);
+
+// 同步合并后的数据到 useProjectData，触发 KPI 和筛选更新
+watch(allProjects, (merged) => {
+  projects.value = merged;
+}, { immediate: true });
 
 // 计算过滤后的项目列表
 const filteredProjects = computed(() => {
@@ -104,7 +133,6 @@ const filteredProjects = computed(() => {
 
 // 处理查询
 const handleQuery = () => {
-  // KPI 由 computed 自动响应 filters 变化重新计算
   showSuccess('查询成功');
 };
 
@@ -128,9 +156,19 @@ const handleOpenDetail = (projectId) => {
 const handleFileUploaded = (fileData) => {
   try {
     const newProjects = fileData.data;
-    // 替换为上传的数据（每次上传覆盖之前的项目列表，因为一个Excel就是一个完整台账）
-    projects.value = newProjects;
-    showSuccess(`成功导入 ${newProjects.length} 个项目（${fileData.fileName}）`);
+    const acceptType = fileData.acceptType;
+
+    if (acceptType === 'business') {
+      businessProjects.value = newProjects;
+    } else if (acceptType === 'self-funded') {
+      selfFundedProjects.value = newProjects;
+    }
+
+    const countInfo = businessProjects.value.length > 0 && selfFundedProjects.value.length > 0
+      ? `经营${businessProjects.value.length}个 + 自筹${selfFundedProjects.value.length}个`
+      : `${newProjects.length} 个`;
+
+    showSuccess(`成功导入 ${countInfo} 项目（${fileData.fileName}）`);
   } catch (error) {
     showError('导入数据失败：' + error.message);
   }
@@ -241,13 +279,23 @@ const resetFilters = () => {
   cursor: not-allowed;
 }
 
-/* === 区域 B：数据导入 === */
+/* === 区域 A：数据导入 === */
 .upload-section {
   background-color: white;
   border-radius: 0.5rem;
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
   margin-bottom: 1.5rem;
   padding: 1.5rem;
+}
+
+.upload-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+}
+
+.upload-col {
+  min-width: 0;
 }
 
 /* === 区域 C：KPI 概览 === */

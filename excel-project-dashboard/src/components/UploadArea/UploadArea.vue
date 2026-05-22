@@ -16,9 +16,9 @@
       </div>
 
       <div class="upload-text">
-        <h3 class="upload-title">拖拽 Excel 文件到此处或点击上传</h3>
-        <p class="upload-subtitle">支持 .xlsx 和 .xls 格式</p>
-        <p class="upload-hint">经营项目请上传含"经营项目台账明细列表"的Excel文件，自筹项目请上传含"自筹项目台账列表"的Excel文件</p>
+        <h3 class="upload-title">{{ title }}</h3>
+        <p class="upload-subtitle">{{ description }}</p>
+        <p class="upload-hint">请上传文件名含"{{ ACCEPT_CONFIG[acceptType].keyword }}"的Excel文件</p>
       </div>
 
       <button class="upload-btn">
@@ -96,10 +96,26 @@
 </template>
 
 <script setup>
-import { ref, nextTick } from 'vue';
+import { ref } from 'vue';
 import { useToast } from '../../composables/useToast';
 import { parseExcelFile } from '../../utils/excelParser';
-import { cleanExcelData } from '../../utils/dataCleaner';
+import { cleanExcelData, cleanSelfFundedData } from '../../utils/dataCleaner';
+
+const props = defineProps({
+  // 'business' | 'self-funded'
+  acceptType: {
+    type: String,
+    required: true
+  },
+  title: {
+    type: String,
+    default: '拖拽 Excel 文件到此处或点击上传'
+  },
+  description: {
+    type: String,
+    default: '支持 .xlsx 和 .xls 格式'
+  }
+});
 
 const emit = defineEmits(['file-uploaded', 'file-error']);
 
@@ -110,6 +126,21 @@ const uploadProgress = ref(0);
 const uploadedFiles = ref([]);
 
 const { showToast } = useToast();
+
+const ACCEPT_CONFIG = {
+  'business': {
+    keyword: '经营项目台账明细列表',
+    skipRows: 0,
+    cleaner: cleanExcelData,
+    label: '经营项目'
+  },
+  'self-funded': {
+    keyword: '自筹项目台账列表',
+    skipRows: 1,
+    cleaner: cleanSelfFundedData,
+    label: '自筹项目'
+  }
+};
 
 // 触发文件选择
 const triggerFileInput = () => {
@@ -156,8 +187,18 @@ const handleDrop = (event) => {
   }
 };
 
+// 校验文件名是否匹配当前上传区域
+const validateFileName = (fileName) => {
+  const config = ACCEPT_CONFIG[props.acceptType];
+  if (!fileName.includes(config.keyword)) {
+    const otherType = props.acceptType === 'business' ? '自筹项目' : '经营项目';
+    throw new Error(`文件名不匹配！${config.label}请上传含"${config.keyword}"的文件，当前文件名不含此关键词。如果是${otherType}表格，请上传到${otherType}区域`);
+  }
+};
+
 // 处理文件上传
 const handleFile = async (file) => {
+  const config = ACCEPT_CONFIG[props.acceptType];
   const fileId = Date.now().toString();
   const fileObj = {
     id: fileId,
@@ -172,6 +213,9 @@ const handleFile = async (file) => {
     isUploading.value = true;
     uploadProgress.value = 0;
 
+    // 校验文件名
+    validateFileName(file.name);
+
     // 模拟进度
     const progressInterval = setInterval(() => {
       if (uploadProgress.value < 90) {
@@ -180,10 +224,10 @@ const handleFile = async (file) => {
     }, 200);
 
     // 解析 Excel 文件
-    const result = await parseExcelFile(file);
+    const result = await parseExcelFile(file, { skipRows: config.skipRows });
 
-    // 应用数据清洗规则（传入文件名用于判定项目类型）
-    const cleanedData = cleanExcelData(result.rawData, file.name);
+    // 应用数据清洗规则
+    const cleanedData = config.cleaner(result.rawData, file.name);
 
     clearInterval(progressInterval);
     uploadProgress.value = 100;
@@ -199,7 +243,8 @@ const handleFile = async (file) => {
       headers: result.headers,
       data: cleanedData,
       rawData: result.rawData,
-      fileName: file.name
+      fileName: file.name,
+      acceptType: props.acceptType
     });
 
     showToast(`${file.name} 解析成功，共 ${cleanedData.length} 条有效数据`, 'success');

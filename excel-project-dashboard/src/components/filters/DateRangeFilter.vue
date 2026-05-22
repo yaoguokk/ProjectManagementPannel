@@ -63,6 +63,14 @@ const dateRangeType = ref('month');
 const startDate = ref('');
 const endDate = ref('');
 
+// 本地日期格式化（避免 toISOString 的时区偏移）
+const formatLocalDate = (date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
 // 计算当前月份的日期范围
 const currentMonthRange = computed(() => {
   const now = new Date();
@@ -72,8 +80,8 @@ const currentMonthRange = computed(() => {
   const lastDay = new Date(year, month + 1, 0);
 
   return {
-    start: firstDay.toISOString().split('T')[0],
-    end: lastDay.toISOString().split('T')[0]
+    start: formatLocalDate(firstDay),
+    end: formatLocalDate(lastDay)
   };
 });
 

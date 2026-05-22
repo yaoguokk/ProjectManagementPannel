@@ -191,6 +191,7 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue';
+import * as XLSX from 'xlsx';
 import ColumnSelector from './ColumnSelector.vue';
 
 const props = defineProps({
@@ -238,15 +239,24 @@ const allColumnNames = ref([...defaultColumnNames]);
 // 当前选中的可见列
 const visibleColumns = ref([...defaultColumnNames]);
 
-// 当项目数据变化时，更新可选列列表
+// 当项目数据变化时，取所有项目键的并集作为可选列
 watch(() => props.projects, (newProjects) => {
   if (newProjects && newProjects.length > 0) {
-    const firstProject = newProjects[0];
-    const excelColumns = Object.keys(firstProject).filter(
-      key => !PROGRAM_FIELDS.includes(key)
-    );
-    // 保持用户已选列不变，但更新总列列表
+    const keySet = new Set();
+    newProjects.forEach(project => {
+      Object.keys(project).forEach(key => {
+        if (!PROGRAM_FIELDS.includes(key)) {
+          keySet.add(key);
+        }
+      });
+    });
+    const excelColumns = [...keySet];
     allColumnNames.value = excelColumns;
+
+    // 清理已被移除的选中列
+    visibleColumns.value = visibleColumns.value.filter(
+      col => allColumnNames.value.includes(col)
+    );
   }
 }, { immediate: true });
 
@@ -387,7 +397,52 @@ const formatCurrency = (value) => {
 };
 
 const exportToExcel = () => {
-  emit('export', filteredProjects.value);
+  if (!filteredProjects.value.length) return;
+
+  // 构建导出数据：选中列 + 两个日期列
+  const tabLabel = currentTab.value === 'initial' ? '初验' : '终验';
+  const exportColumns = [
+    ...visibleColumns.value,
+    `计划${tabLabel}时间`,
+    `实际${tabLabel}时间`
+  ];
+
+  const exportRows = filteredProjects.value.map(project => {
+    const row = {};
+    // 选中列
+    visibleColumns.value.forEach(col => {
+      const val = getColumnValue(project, col);
+      // 金额列导出为数字
+      if (isAmountColumn(col)) {
+        row[col] = parseFloat(val) || 0;
+      } else {
+        row[col] = val;
+      }
+    });
+    // 日期列
+    row[`计划${tabLabel}时间`] = getPlanDate(project);
+    row[`实际${tabLabel}时间`] = getActualDate(project);
+    return row;
+  });
+
+  const ws = XLSX.utils.json_to_sheet(exportRows, { header: exportColumns });
+  // 设置金额列格式
+  exportColumns.forEach((col, idx) => {
+    if (isAmountColumn(col)) {
+      const colLetter = XLSX.utils.encode_col(idx);
+      // 为每行设置数字格式
+      for (let r = 1; r <= exportRows.length; r++) {
+        const cellRef = colLetter + (r + 1);
+        if (ws[cellRef]) {
+          ws[cellRef].z = '#,##0.00';
+        }
+      }
+    }
+  });
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '项目明细');
+  XLSX.writeFile(wb, `项目明细_${new Date().toISOString().slice(0, 10)}.xlsx`);
 };
 
 const openProjectDetail = (projectId) => {
