@@ -74,9 +74,13 @@
     <div class="cleaning-rules">
       <h4 class="rules-title">数据清洗规则</h4>
       <ul class="rules-list">
+        <li v-if="acceptType === 'business'" class="rule-item">
+          <span class="rule-icon">✓</span>
+          排除"立项方式"为"基于商机立项"的行
+        </li>
         <li class="rule-item">
           <span class="rule-icon">✓</span>
-          过滤空行和"合计"行
+          只保留项目状态为"待结算/已结算/待终验/待初验"的行
         </li>
         <li class="rule-item">
           <span class="rule-icon">✓</span>
@@ -88,7 +92,11 @@
         </li>
         <li class="rule-item">
           <span class="rule-icon">✓</span>
-          清洗金额字段（去除¥、$、等符号）
+          清洗金额字段（去除¥、$、逗号等符号）
+        </li>
+        <li v-if="acceptType === 'self-funded'" class="rule-item">
+          <span class="rule-icon">✓</span>
+          投资总金额从万元转换为元（×10000）
         </li>
       </ul>
     </div>

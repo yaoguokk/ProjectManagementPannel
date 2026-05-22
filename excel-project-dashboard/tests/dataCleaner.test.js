@@ -180,10 +180,19 @@ describe('Data Cleaner Utilities', () => {
       expect(row.planFinalDate).toBe('2025-12-31');
     });
 
-    test('通过 fileName 参数判定 projectType', () => {
-      const rows = [makeRow()];
-      const result = cleanExcelData(rows, '经营项目台账明细列表_202605.xlsx');
-      expect(result[0].projectType).toBe('经营项目');
+    test('fileName=经营项目台账明细列表 → projectType=经营项目', () => {
+      const [row] = cleanExcelData([makeRow()], '经营项目台账明细列表_202605.xlsx');
+      expect(row.projectType).toBe('经营项目');
+    });
+
+    test('fileName=自筹项目台账列表 → projectType=自筹项目', () => {
+      const [row] = cleanExcelData([makeRow()], '自筹项目台账列表_202605.xlsx');
+      expect(row.projectType).toBe('自筹项目');
+    });
+
+    test('fileName 为空时回退到行内 项目类型 字段', () => {
+      const [row] = cleanExcelData([makeRow({ '项目类型': '自筹项目' })], '');
+      expect(row.projectType).toBe('自筹项目');
     });
 
     test('空项目名称应赋予默认值', () => {
