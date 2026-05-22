@@ -2,23 +2,23 @@
   <div class="project-type-filter">
     <div class="filter-group">
       <button
-        @click="setProjectType('all')"
+        @click="setProjectType('全部')"
         class="type-btn"
-        :class="{ 'active': projectType === 'all' }"
+        :class="{ 'active': projectType === '全部' }"
       >
         全部
       </button>
       <button
-        @click="setProjectType('business')"
+        @click="setProjectType('经营项目')"
         class="type-btn"
-        :class="{ 'active': projectType === 'business' }"
+        :class="{ 'active': projectType === '经营项目' }"
       >
         经营项目
       </button>
       <button
-        @click="setProjectType('self')"
+        @click="setProjectType('自筹项目')"
         class="type-btn"
-        :class="{ 'active': projectType === 'self' }"
+        :class="{ 'active': projectType === '自筹项目' }"
       >
         自筹项目
       </button>
@@ -32,7 +32,7 @@ import { ref } from 'vue';
 const props = defineProps({
   projectType: {
     type: String,
-    default: 'all'
+    default: '全部'
   }
 });
 

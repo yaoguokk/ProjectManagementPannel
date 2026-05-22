@@ -92,6 +92,7 @@ projectData.js (src/data/projectData.js line 73 calculateKpiData)
 KpiCards.vue (src/components/KpiCards/KpiCards.vue)
   读取 kpiData.initial.xxx 和 kpiData.final.xxx
   展示环形进度图 + 细分表格
+  项目数显示格式: 已验收数/总数 (如 13/20 个)
 ```
 
 ### 步骤 4: D 区域 — 项目明细表格
@@ -107,7 +108,7 @@ ProjectTable.vue (src/components/ProjectTable/ProjectTable.vue)
   filteredProjects computed (line 213) — 4层过滤叠加:
 
   第1层 — 项目类型 (line 217-221):
-    if (props.projectType !== 'all')
+    if (props.projectType !== '全部')
       → filter(projectType === '经营项目' or '自筹项目')
 
   第2层 — Tab + 时间范围 (line 224-229):  ← 🔴 当前问题所在
@@ -142,7 +143,7 @@ ProjectTable.vue (src/components/ProjectTable/ProjectTable.vue)
 - **修复**: 改为直接用 `props.projectType` 比较（因为值本身就是中文）
   ```js
   // 修复前
-  if (props.projectType !== 'all') {
+  if (props.projectType !== '全部') {
     project.projectType === (props.projectType === 'business' ? '经营项目' : '自筹项目')
   }
   // 修复后
@@ -150,6 +151,36 @@ ProjectTable.vue (src/components/ProjectTable/ProjectTable.vue)
     project.projectType === props.projectType
   }
   ```
+
+### Bug #3: ProjectTypeFilter emit 英文值导致按钮点击后数据消失 （2026-05-22 修复）
+- **现象**: 点击 B 区域任意项目类型按钮后，C/D 区域数据全部消失
+- **根因**: [ProjectTypeFilter.vue:5-25](src/components/filters/ProjectTypeFilter.vue#L5-L25) emit `'all'`/`'business'`/`'self'`（英文），但 `useProjectData.applyFilters()` 用中文 `'全部'`/`'经营项目'` 比较，`'business' !== '全部'` → 进入过滤但匹配不上任何数据
+- **修复**: emit 值改为 `'全部'`/`'经营项目'`/`'自筹项目'`（中文）
+
+### Bug #4: ProjectStatus 常量值不匹配真实数据 （2026-05-22 修复）
+- **现象**: `projectStatus.js` 定义的状态值为 `'已完成'`、`'进行中'`、`'已暂停'` 等，与 Excel 真实数据 (`待初验`/`待终验`/`待结算`/`已结算`) 完全不同
+- **修复**: 改为正确的 4 个中文状态值，键名也从英文思维改为语义化命名
+  ```js
+  // 修复前
+  export const ProjectStatus = {
+    COMPLETED: '已完成', INCOMPLETE: '未完成', DELAYED: '已延期',
+    IN_PROGRESS: '进行中', PAUSED: '已暂停'
+  };
+  // 修复后
+  export const ProjectStatus = {
+    PENDING_INITIAL: '待初验', PENDING_FINAL: '待终验',
+    PENDING_SETTLEMENT: '待结算', SETTLED: '已结算',
+  };
+  ```
+
+### 改进 #1: C 区域项目数显示格式优化 （2026-05-22）
+- **projectData.js**: `calculatePhaseData` 返回新增 `completedProjectCount`、`businessCompletedProjectCount`、`selfCompletedProjectCount`
+- **KpiCards.vue**: 项目数从 `20 个` 改为 `13/20 个`（已验收数/总数）
+
+### Bug #3: ProjectTypeFilter emit 英文值导致按钮点击后数据消失 （2026-05-22 修复）
+- **现象**: 点击 B 区域任意项目类型按钮后，C/D 区域数据全部消失
+- **根因**: [ProjectTypeFilter.vue:5-25](src/components/filters/ProjectTypeFilter.vue#L5-L25) emit `'all'`/`'business'`/`'self'`（英文），但 `useProjectData.applyFilters()` 用中文 `'全部'`/`'经营项目'` 比较，`'business' !== '全部'` → 进入过滤但匹配不上任何数据
+- **修复**: emit 值改为 `'全部'`/`'经营项目'`/`'自筹项目'`（中文）
 
 ---
 
@@ -198,8 +229,13 @@ ProjectTable.vue (src/components/ProjectTable/ProjectTable.vue)
 | `src/components/KpiCards/KpiCards.vue` | C区域-KPI卡片 |
 
 ### 测试数据位置
+经营项目测试数据位置：
 ```
 /Users/yao/Desktop/项目全景展示/excel upload file /经营项目台账明细列表_20260518161209541.xlsx
+```
+自筹项目测试数据位置：
+```
+/Users/yao/Desktop/项目全景展示/excel upload file /自筹项目台账列表_20260518160212361.xlsx
 ```
 
 ### 启动命令

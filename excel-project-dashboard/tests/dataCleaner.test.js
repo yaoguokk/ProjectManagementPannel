@@ -2,8 +2,7 @@ import {
   formatDate,
   cleanNumber,
   cleanString,
-  cleanExcelData,
-  calculateMetrics
+  cleanExcelData
 } from '../src/utils/dataCleaner';
 
 describe('Data Cleaner Utilities', () => {
@@ -72,47 +71,137 @@ describe('Data Cleaner Utilities', () => {
     });
   });
 
-  describe('cleanExcelData', () => {
-    const mockExcelData = [
-      { '项目编号': 'PRJ-001', '项目名称': '智慧城市', '预算': '¥500000' },
-      { '项目编号': 'PRJ-002', '项目名称': '', '预算': '¥300000' },
-      { '项目编号': 'PRJ-003', '项目名称': '数据平台', '预算': '¥200000' },
-      { '项目编号': '合计', '项目名称': '总计', '预算': '¥1000000' }
-    ];
+  // 贴近真实 Excel 77 列的生产数据（共用 mock）
+  const makeRow = (overrides = {}) => ({
+    '项目编号': 'PRJ-001',
+    '项目名称': '智慧城市项目',
+    '项目经理': '张三',
+    '业务部所': '信息技术部',
+    '项目类型': '经营项目',
+    '立项收入(元)': '¥500,000',
+    '项目状态': '待初验',
+    '立项方式': '公开招标',
+    '项目计划初验时间含变更': '2025-06-30',
+    '项目计划终验时间含变更': '2025-12-31',
+    '项目实际初验时间': '',
+    '项目实际终验时间': '',
+    '立项审批完成时间': '2025-01-15',
+    ...overrides,
+  });
 
-    test('should filter total rows', () => {
-      const result = cleanExcelData(mockExcelData);
+  describe('cleanExcelData > 过滤规则', () => {
+    test('应排除 立项方式="基于商机立项" 的行', () => {
+      const rows = [
+        makeRow({ '项目编号': 'A', '立项方式': '公开招标' }),
+        makeRow({ '项目编号': 'B', '立项方式': '基于商机立项' }),
+      ];
+      const result = cleanExcelData(rows);
+      expect(result).toHaveLength(1);
+      expect(result[0].projectCode).toBe('A');
+    });
+
+    test('应保留 立项方式≠"基于商机立项" 的行', () => {
+      const rows = [
+        makeRow({ '项目编号': 'A', '立项方式': '公开招标' }),
+        makeRow({ '项目编号': 'B', '立项方式': '竞争性谈判' }),
+        makeRow({ '项目编号': 'C', '立项方式': '' }),
+      ];
+      const result = cleanExcelData(rows);
       expect(result).toHaveLength(3);
-      expect(result[0].projectName).toBe('智慧城市');
-      expect(result[1].projectName).toBe('项目2');
-      expect(result[2].projectName).toBe('数据平台');
     });
 
-    test('should clean and format data correctly', () => {
-      const result = cleanExcelData(mockExcelData);
-      expect(result[0].projectCode).toBe('PRJ-001');
-      expect(result[0].budget).toBe(500000);
-      expect(result[0].id).toBeDefined();
+    test('应只保留4种允许状态的行', () => {
+      const rows = [
+        makeRow({ '项目编号': 'A', '项目状态': '待初验' }),
+        makeRow({ '项目编号': 'B', '项目状态': '待终验' }),
+        makeRow({ '项目编号': 'C', '项目状态': '待结算' }),
+        makeRow({ '项目编号': 'D', '项目状态': '已结算' }),
+      ];
+      const result = cleanExcelData(rows);
+      expect(result).toHaveLength(4);
+      expect(result.map(r => r.projectCode)).toEqual(['A', 'B', 'C', 'D']);
+    });
+
+    test('应排除状态为"已终止"的行', () => {
+      const rows = [
+        makeRow({ '项目编号': 'A', '项目状态': '待初验' }),
+        makeRow({ '项目编号': 'B', '项目状态': '已终止' }),
+      ];
+      const result = cleanExcelData(rows);
+      expect(result).toHaveLength(1);
+      expect(result[0].projectCode).toBe('A');
+    });
+
+    test('应排除状态为"已取消"的行', () => {
+      const rows = [
+        makeRow({ '项目编号': 'A', '项目状态': '待初验' }),
+        makeRow({ '项目编号': 'B', '项目状态': '已取消' }),
+      ];
+      const result = cleanExcelData(rows);
+      expect(result).toHaveLength(1);
+      expect(result[0].projectCode).toBe('A');
+    });
+
+    test('应排除缺少项目状态列的行', () => {
+      const rowWithoutStatus = {
+        '项目编号': 'PRJ-002',
+        '项目名称': '无状态项目',
+        '立项收入(元)': '¥100,000',
+      };
+      const rows = [makeRow({ '项目编号': 'A' }), rowWithoutStatus];
+      const result = cleanExcelData(rows);
+      expect(result).toHaveLength(1);
+      expect(result[0].projectCode).toBe('A');
+    });
+
+    test('空数组输入应返回 []', () => {
+      expect(cleanExcelData([])).toEqual([]);
     });
   });
 
-  describe('calculateMetrics', () => {
-    const mockProjects = [
-      { id: 1, projectName: '项目1', budget: 100000, startDate: '2023-01-01' },
-      { id: 2, projectName: '项目2', budget: 200000, startDate: '2023-02-01' },
-      { id: 3, projectName: '项目3', budget: 150000, startDate: '2023-01-15' }
-    ];
-
-    test('should calculate total projects correctly', () => {
-      const metrics = calculateMetrics(mockProjects);
-      expect(metrics.totalProjects).toBe(3);
-      expect(metrics.totalBudget).toBe(450000);
+  describe('cleanExcelData > 数据映射', () => {
+    test('正确映射 projectCode 从 项目编号', () => {
+      const [row] = cleanExcelData([makeRow({ '项目编号': 'JY-2025-001' })]);
+      expect(row.projectCode).toBe('JY-2025-001');
     });
 
-    test('should handle empty projects array', () => {
-      const metrics = calculateMetrics([]);
-      expect(metrics.totalProjects).toBe(0);
-      expect(metrics.totalBudget).toBe(0);
+    test('正确映射 budget 从 立项收入(元)', () => {
+      const [row] = cleanExcelData([makeRow({ '立项收入(元)': '¥1,200,000' })]);
+      expect(row.budget).toBe(1200000);
+    });
+
+    test('正确映射 planInitialDate 从 项目计划初验时间含变更', () => {
+      const [row] = cleanExcelData([makeRow({ '项目计划初验时间含变更': '2025-06-30' })]);
+      expect(row.planInitialDate).toBe('2025-06-30');
+    });
+
+    test('正确映射 planFinalDate 从 项目计划终验时间含变更', () => {
+      const [row] = cleanExcelData([makeRow({ '项目计划终验时间含变更': '2025-12-31' })]);
+      expect(row.planFinalDate).toBe('2025-12-31');
+    });
+
+    test('通过 fileName 参数判定 projectType', () => {
+      const rows = [makeRow()];
+      const result = cleanExcelData(rows, '经营项目台账明细列表_202605.xlsx');
+      expect(result[0].projectType).toBe('经营项目');
+    });
+
+    test('空项目名称应赋予默认值', () => {
+      const [row] = cleanExcelData([makeRow({ '项目名称': '' })]);
+      expect(row.projectName).toMatch(/^项目\d+$/);
+    });
+
+    test('空项目编号应赋予默认值 PRJ-N', () => {
+      const [row] = cleanExcelData([makeRow({ '项目编号': '' })]);
+      expect(row.projectCode).toMatch(/^PRJ-\d+$/);
+    });
+
+    test('应生成唯一 id', () => {
+      const [r1, r2] = cleanExcelData([makeRow(), makeRow()]);
+      expect(r1.id).toBeDefined();
+      expect(r2.id).toBeDefined();
+      expect(r1.id).not.toBe(r2.id);
     });
   });
+
 });

@@ -1,13 +1,12 @@
 /**
  * 项目状态常量定义
- * 消除魔法数字，统一使用常量引用
+ * 所有值必须与 Excel 数据中的中文状态值精确匹配
  */
 export const ProjectStatus = {
-  COMPLETED: '已完成',
-  INCOMPLETE: '未完成',
-  DELAYED: '已延期',
-  IN_PROGRESS: '进行中',
-  PAUSED: '已暂停'
+  PENDING_INITIAL: '待初验',
+  PENDING_FINAL: '待终验',
+  PENDING_SETTLEMENT: '待结算',
+  SETTLED: '已结算',
 };
 
 /**

@@ -34,21 +34,32 @@ export const cleanExcelData = (rawData, fileName = '') => {
 
       return true;
     })
-    .map((row, index) => ({
-      id: generateId(),
-      projectCode: cleanString(row['项目编号']) || `PRJ-${index + 1}`,
-      projectName: cleanString(row['项目名称']) || `项目${index + 1}`,
-      manager: cleanString(row['项目经理']) || '未知',
-      department: cleanString(row['业务部所']) || '未知部门',
-      projectType: fileProjectType || cleanString(row['项目类型']) || '未知类型',
-      budget: cleanNumber(row['立项收入(元)']),
-      planInitialDate: formatDate(row['项目计划初验时间含变更']),
-      planFinalDate: formatDate(row['项目计划终验时间含变更']),
-      actualInitialDate: formatDate(row['项目实际初验时间']),
-      actualFinalDate: formatDate(row['项目实际终验时间']),
-      startDate: formatDate(row['立项审批完成时间']),
-      status: cleanString(row['项目状态']) || '未知状态',
-    }));
+    .map((row, index) => {
+      // 保留所有原始Excel列数据，清洗后展平到项目对象上
+      const rawFields = {};
+      Object.keys(row).forEach((key) => {
+        rawFields[key] = cleanString(row[key]);
+      });
+
+      return {
+        // 原始Excel全部列数据（清洗后）
+        ...rawFields,
+        // 程序映射字段（覆盖同名Excel列）
+        id: generateId(),
+        projectCode: cleanString(row['项目编号']) || `PRJ-${index + 1}`,
+        projectName: cleanString(row['项目名称']) || `项目${index + 1}`,
+        manager: cleanString(row['项目经理']) || '未知',
+        department: cleanString(row['业务部所']) || '未知部门',
+        projectType: fileProjectType || cleanString(row['项目类型']) || '未知类型',
+        budget: cleanNumber(row['立项收入(元)']),
+        planInitialDate: formatDate(row['项目计划初验时间含变更']),
+        planFinalDate: formatDate(row['项目计划终验时间含变更']),
+        actualInitialDate: formatDate(row['项目实际初验时间']),
+        actualFinalDate: formatDate(row['项目实际终验时间']),
+        startDate: formatDate(row['立项审批完成时间']),
+        status: cleanString(row['项目状态']) || '未知状态',
+      };
+    });
 };
 
 /**

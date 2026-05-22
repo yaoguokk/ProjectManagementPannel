@@ -97,6 +97,7 @@ const calculatePhaseData = (projects, phase, dateRange) => {
   const completedAmount = completedProjects.reduce((sum, p) => sum + (p.budget || 0), 0);
 
   const totalProjects = filtered.length;
+  const completedProjectCount = completedProjects.length;
   const completionRate = targetAmount > 0 ? Math.round((completedAmount / targetAmount) * 100) : 0;
 
   // 细分：经营项目
@@ -122,14 +123,17 @@ const calculatePhaseData = (projects, phase, dateRange) => {
     targetAmount,
     completedAmount,
     totalProjects,
+    completedProjectCount,
     businessTargetAmount,
     businessCompletedAmount,
     businessCompletionRate,
     businessProjects: businessProjects.length,
+    businessCompletedProjectCount: businessProjects.filter((p) => p[actualDateField]).length,
     selfTargetAmount,
     selfCompletedAmount,
     selfCompletionRate,
     selfProjects: selfProjects.length,
+    selfCompletedProjectCount: selfProjects.filter((p) => p[actualDateField]).length,
   };
 };
 
@@ -138,14 +142,17 @@ const emptyPhaseData = () => ({
   targetAmount: 0,
   completedAmount: 0,
   totalProjects: 0,
+  completedProjectCount: 0,
   businessTargetAmount: 0,
   businessCompletedAmount: 0,
   businessCompletionRate: 0,
   businessProjects: 0,
+  businessCompletedProjectCount: 0,
   selfTargetAmount: 0,
   selfCompletedAmount: 0,
   selfCompletionRate: 0,
   selfProjects: 0,
+  selfCompletedProjectCount: 0,
 });
 
 /**

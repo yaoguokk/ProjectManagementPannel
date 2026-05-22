@@ -48,6 +48,13 @@
       </div>
 
       <div class="toolbar-right">
+        <!-- 列设置 -->
+        <ColumnSelector
+          :availableColumns="allColumnNames"
+          v-model:selectedColumns="visibleColumns"
+          :defaultColumns="defaultColumnNames"
+        />
+
         <!-- 搜索框 -->
         <div class="search-box">
           <input
@@ -78,43 +85,50 @@
         <table class="table">
           <thead>
             <tr>
-              <th>项目编号</th>
-              <th>项目名称</th>
-              <th>项目经理</th>
-              <th>所属部门</th>
-              <th>项目类型</th>
-              <th>立项收入</th>
+              <th
+                v-for="col in visibleColumns"
+                :key="col"
+                :class="{ 'amount-header': isAmountColumn(col) }"
+              >
+                {{ col }}
+              </th>
               <th>计划{{ currentTab === 'initial' ? '初验' : '终验' }}时间</th>
               <th>实际{{ currentTab === 'initial' ? '初验' : '终验' }}时间</th>
-              <th>状态</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="project in paginatedProjects" :key="project.id">
-              <td>{{ project.projectCode }}</td>
-              <td>
-                <a
-                  href="#"
-                  class="project-name"
-                  @click.prevent="openProjectDetail(project.id)"
-                >
-                  {{ project.projectName }}
-                </a>
+              <td
+                v-for="col in visibleColumns"
+                :key="col"
+                :class="{ 'amount': isAmountColumn(col) }"
+              >
+                <template v-if="col === '项目名称'">
+                  <a
+                    href="#"
+                    class="project-name"
+                    @click.prevent="openProjectDetail(project.id)"
+                  >
+                    {{ project['项目名称'] || project.projectName }}
+                  </a>
+                </template>
+                <template v-else-if="col === '项目状态'">
+                  <span
+                    class="status-tag"
+                    :class="getStatusClass(project['项目状态'] || project.status)"
+                  >
+                    {{ project['项目状态'] || project.status }}
+                  </span>
+                </template>
+                <template v-else-if="isAmountColumn(col)">
+                  {{ formatCurrency(getColumnValue(project, col)) }}
+                </template>
+                <template v-else>
+                  {{ getColumnValue(project, col) }}
+                </template>
               </td>
-              <td>{{ project.manager }}</td>
-              <td>{{ project.department }}</td>
-              <td>{{ project.projectType }}</td>
-              <td class="amount">{{ formatCurrency(project.budget) }}</td>
               <td>{{ getPlanDate(project) }}</td>
               <td>{{ getActualDate(project) }}</td>
-              <td>
-                <span
-                  class="status-tag"
-                  :class="getStatusClass(project.status)"
-                >
-                  {{ project.status }}
-                </span>
-              </td>
             </tr>
           </tbody>
         </table>
@@ -176,7 +190,8 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
+import ColumnSelector from './ColumnSelector.vue';
 
 const props = defineProps({
   projects: {
@@ -185,7 +200,7 @@ const props = defineProps({
   },
   projectType: {
     type: String,
-    default: 'all'
+    default: '全部'
   },
   dateRange: {
     type: Object,
@@ -200,6 +215,50 @@ const searchQuery = ref('');
 const statusFilter = ref('all');
 const pageSize = ref(10);
 const currentPage = ref(1);
+
+// 程序内部字段（这些不是Excel原始列，需要从列选择器中排除）
+const PROGRAM_FIELDS = [
+  'id', 'projectCode', 'projectName', 'manager', 'department',
+  'projectType', 'budget', 'planInitialDate', 'planFinalDate',
+  'actualInitialDate', 'actualFinalDate', 'startDate', 'status'
+];
+
+// 默认展示的Excel列（对应目前显示的7个数据列，日期列另外固定显示）
+const defaultColumnNames = [
+  '项目编号', '项目名称', '项目经理', '业务部所',
+  '项目类型', '立项收入(元)', '项目状态'
+];
+
+// 金额类列（值需要格式化为货币）
+const amountColumnKeywords = ['收入', '成本', '金额', '费用', '预算', '支出', '分包费', '外包费', '分摊', '采购', '租赁'];
+
+// 所有可选的Excel列名（从第一个项目中提取中文字段名）
+const allColumnNames = ref([...defaultColumnNames]);
+
+// 当前选中的可见列
+const visibleColumns = ref([...defaultColumnNames]);
+
+// 当项目数据变化时，更新可选列列表
+watch(() => props.projects, (newProjects) => {
+  if (newProjects && newProjects.length > 0) {
+    const firstProject = newProjects[0];
+    const excelColumns = Object.keys(firstProject).filter(
+      key => !PROGRAM_FIELDS.includes(key)
+    );
+    // 保持用户已选列不变，但更新总列列表
+    allColumnNames.value = excelColumns;
+  }
+}, { immediate: true });
+
+// 获取列的值（优先使用Excel原始列名）
+const getColumnValue = (project, colName) => {
+  return project[colName] !== undefined ? project[colName] : '';
+};
+
+// 判断是否为金额列
+const isAmountColumn = (colName) => {
+  return amountColumnKeywords.some(keyword => colName.includes(keyword));
+};
 
 // 判断日期是否在选定时间范围内
 const isDateInRange = (dateStr) => {
@@ -521,6 +580,10 @@ const openProjectDetail = (projectId) => {
 }
 
 /* 金额对齐 */
+.amount-header {
+  text-align: right;
+}
+
 .amount {
   text-align: right;
   font-weight: 600;

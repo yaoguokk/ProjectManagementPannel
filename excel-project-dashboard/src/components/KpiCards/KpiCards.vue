@@ -52,7 +52,7 @@
             </div>
             <div class="detail-item">
               <span class="detail-label">项目数</span>
-              <span class="detail-value">{{ initialTotalProjects }} 个</span>
+              <span class="detail-value">{{ initialCompletedProjectCount }}/{{ initialTotalProjects }} 个</span>
             </div>
           </div>
         </div>
@@ -109,7 +109,7 @@
             </div>
             <div class="detail-item">
               <span class="detail-label">项目数</span>
-              <span class="detail-value">{{ finalTotalProjects }} 个</span>
+              <span class="detail-value">{{ finalCompletedProjectCount }}/{{ finalTotalProjects }} 个</span>
             </div>
           </div>
         </div>
@@ -136,14 +136,14 @@
               <td>{{ formatCurrency(businessTargetAmount) }}</td>
               <td>{{ formatCurrency(businessCompletedAmount) }}</td>
               <td>{{ businessCompletionRate }}%</td>
-              <td>{{ businessProjects }} 个</td>
+              <td>{{ businessCompletedProjects }}/{{ businessProjects }} 个</td>
             </tr>
             <tr>
               <td>自筹项目</td>
               <td>{{ formatCurrency(selfTargetAmount) }}</td>
               <td>{{ formatCurrency(selfCompletedAmount) }}</td>
               <td>{{ selfCompletionRate }}%</td>
-              <td>{{ selfProjects }} 个</td>
+              <td>{{ selfCompletedProjects }}/{{ selfProjects }} 个</td>
             </tr>
           </tbody>
         </table>
@@ -170,12 +170,14 @@ const initialCompletionRate = computed(() => initialData.value.completionRate ||
 const initialTargetAmount = computed(() => initialData.value.targetAmount || 0);
 const initialCompletedAmount = computed(() => initialData.value.completedAmount || 0);
 const initialTotalProjects = computed(() => initialData.value.totalProjects || 0);
+const initialCompletedProjectCount = computed(() => initialData.value.completedProjectCount || 0);
 
 // 终验数据
 const finalCompletionRate = computed(() => finalData.value.completionRate || 0);
 const finalTargetAmount = computed(() => finalData.value.targetAmount || 0);
 const finalCompletedAmount = computed(() => finalData.value.completedAmount || 0);
 const finalTotalProjects = computed(() => finalData.value.totalProjects || 0);
+const finalCompletedProjectCount = computed(() => finalData.value.completedProjectCount || 0);
 
 // 细分表格数据（展示经营/自筹合计，取初验+终验的总和）
 const businessTargetAmount = computed(() =>
@@ -188,6 +190,8 @@ const businessCompletionRate = computed(() => {
 });
 const businessProjects = computed(() =>
   (initialData.value.businessProjects || 0) + (finalData.value.businessProjects || 0));
+const businessCompletedProjects = computed(() =>
+  (initialData.value.businessCompletedProjectCount || 0) + (finalData.value.businessCompletedProjectCount || 0));
 
 const selfTargetAmount = computed(() =>
   (initialData.value.selfTargetAmount || 0) + (finalData.value.selfTargetAmount || 0));
@@ -199,6 +203,8 @@ const selfCompletionRate = computed(() => {
 });
 const selfProjects = computed(() =>
   (initialData.value.selfProjects || 0) + (finalData.value.selfProjects || 0));
+const selfCompletedProjects = computed(() =>
+  (initialData.value.selfCompletedProjectCount || 0) + (finalData.value.selfCompletedProjectCount || 0));
 
 const initialCircleOffset = computed(() => {
   const circumference = 2 * Math.PI * 54;
