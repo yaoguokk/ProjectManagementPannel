@@ -347,8 +347,10 @@ const formatFileSize = (bytes) => {
 }
 
 .upload-btn {
-  display: inline-block;
-  padding: 0.625rem 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  height: 2.25rem;
+  padding: 0 1.5rem;
   background-color: #3b82f6;
   color: white;
   border: none;

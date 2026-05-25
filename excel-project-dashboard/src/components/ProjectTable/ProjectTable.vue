@@ -82,18 +82,28 @@
     <!-- 第三层：数据表格 -->
     <div class="table-section">
       <div class="table-container">
-        <table class="table">
+        <table class="table" :class="{ 'is-resizing': !!resizing }" :key="allColumns.join(',')">
+          <colgroup>
+            <col
+              v-for="col in allColumns"
+              :key="col"
+              :style="columnWidths[col] ? { width: columnWidths[col] + 'px', minWidth: columnWidths[col] + 'px' } : {}"
+            />
+          </colgroup>
           <thead>
             <tr>
               <th
-                v-for="col in visibleColumns"
+                v-for="col in allColumns"
                 :key="col"
                 :class="{ 'amount-header': isAmountColumn(col) }"
+                :style="columnWidths[col] ? { width: columnWidths[col] + 'px' } : {}"
               >
                 {{ col }}
+                <div
+                  class="resize-handle"
+                  @mousedown.prevent="startResize($event, col)"
+                ></div>
               </th>
-              <th>计划{{ currentTab === 'initial' ? '初验' : '终验' }}时间</th>
-              <th>实际{{ currentTab === 'initial' ? '初验' : '终验' }}时间</th>
             </tr>
           </thead>
           <tbody>
@@ -101,7 +111,8 @@
               <td
                 v-for="col in visibleColumns"
                 :key="col"
-                :class="{ 'amount': isAmountColumn(col) }"
+                :class="{ 'amount': isAmountColumn(col), 'col-project-name': col === '项目名称', 'col-project-code': col === '项目编号' }"
+                :title="getColumnValue(project, col)"
               >
                 <template v-if="col === '项目名称'">
                   <a
@@ -113,11 +124,20 @@
                   </a>
                 </template>
                 <template v-else-if="col === '项目状态'">
-                  <span
-                    class="status-tag"
-                    :class="getStatusClass(project['项目状态'] || project.status)"
-                  >
-                    {{ project['项目状态'] || project.status }}
+                  <span class="traffic-status-group">
+                    <span
+                      v-if="getTrafficLight(project)"
+                      class="traffic-tag"
+                      :class="getTrafficLight(project).cssClass"
+                    >
+                      {{ getTrafficLight(project).label }}
+                    </span>
+                    <span
+                      class="status-tag"
+                      :class="getStatusClass(project['项目状态'] || project.status)"
+                    >
+                      {{ project['项目状态'] || project.status }}
+                    </span>
                   </span>
                 </template>
                 <template v-else-if="isAmountColumn(col)">
@@ -190,7 +210,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onBeforeUnmount } from 'vue';
 import * as XLSX from 'xlsx';
 import ColumnSelector from './ColumnSelector.vue';
 
@@ -238,6 +258,79 @@ const allColumnNames = ref([...defaultColumnNames]);
 
 // 当前选中的可见列
 const visibleColumns = ref([...defaultColumnNames]);
+
+// 默认列宽（含日期列，两个Tab共用）
+const DEFAULT_COL_WIDTHS = {
+  '项目编号': 160,
+  '项目名称': 300,
+  '项目经理': 100,
+  '业务部所': 120,
+  '项目类型': 100,
+  '立项收入(元)': 140,
+  '项目状态': 180,
+  '计划初验时间': 140,
+  '实际初验时间': 140,
+  '计划终验时间': 140,
+  '实际终验时间': 140,
+};
+
+// 列宽调整状态
+const columnWidths = ref({ ...DEFAULT_COL_WIDTHS });
+const resizing = ref(null);
+
+// 所有表格列（可见列 + 两个日期列）
+const allColumns = computed(() => [
+  ...visibleColumns.value,
+  `计划${currentTab.value === 'initial' ? '初验' : '终验'}时间`,
+  `实际${currentTab.value === 'initial' ? '初验' : '终验'}时间`,
+]);
+
+const startResize = (event, column) => {
+  const th = event.target.closest('th');
+  const currentWidth = th ? th.offsetWidth : 150;
+  resizing.value = { column, startX: event.clientX, startWidth: currentWidth };
+};
+
+const onResizeMove = (event) => {
+  if (!resizing.value) return;
+  const delta = event.clientX - resizing.value.startX;
+  const newWidth = Math.max(60, resizing.value.startWidth + delta);
+  columnWidths.value = { ...columnWidths.value, [resizing.value.column]: newWidth };
+};
+
+const stopResize = () => {
+  resizing.value = null;
+};
+
+watch(resizing, (val) => {
+  if (val) {
+    document.addEventListener('mousemove', onResizeMove);
+    document.addEventListener('mouseup', stopResize);
+  } else {
+    document.removeEventListener('mousemove', onResizeMove);
+    document.removeEventListener('mouseup', stopResize);
+  }
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener('mousemove', onResizeMove);
+  document.removeEventListener('mouseup', stopResize);
+});
+
+// 列变化时给新列补默认宽度，避免 table-layout:fixed 下宽度为 0
+watch(allColumns, (newCols) => {
+  const widths = { ...columnWidths.value };
+  let changed = false;
+  newCols.forEach(col => {
+    if (!(col in widths)) {
+      widths[col] = 120; // 新列默认 120px
+      changed = true;
+    }
+  });
+  if (changed) {
+    columnWidths.value = widths;
+  }
+});
 
 // 当项目数据变化时，取所有项目键的并集作为可选列
 watch(() => props.projects, (newProjects) => {
@@ -343,6 +436,31 @@ const getActualDate = (project) => {
   return currentTab.value === 'initial' ? project.actualInitialDate || '-' : project.actualFinalDate || '-';
 };
 
+const parseLocalDate = (dateStr) => {
+  const parts = dateStr.split('-');
+  return new Date(+parts[0], parts[1] - 1, +parts[2]);
+};
+
+const getTrafficLight = (project) => {
+  const planDate = currentTab.value === 'initial'
+    ? project.planInitialDate : project.planFinalDate;
+  const actualDate = currentTab.value === 'initial'
+    ? project.actualInitialDate : project.actualFinalDate;
+
+  if (!planDate) return null;
+  if (actualDate) return { label: '已完成', cssClass: 'traffic-completed' };
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const plan = parseLocalDate(planDate);
+  const threeMonthsBefore = new Date(plan);
+  threeMonthsBefore.setMonth(threeMonthsBefore.getMonth() - 3);
+
+  if (today >= plan) return { label: '已滞后', cssClass: 'traffic-delayed' };
+  if (today >= threeMonthsBefore) return { label: '预警', cssClass: 'traffic-pending' };
+  return { label: '低风险', cssClass: 'traffic-completed' };
+};
+
 const setTab = (tab) => {
   currentTab.value = tab;
   currentPage.value = 1;
@@ -387,10 +505,8 @@ const getStatusClass = (status) => {
 };
 
 const formatCurrency = (value) => {
-  if (value === 0) return '¥ 0';
+  if (value === 0) return '0';
   return new Intl.NumberFormat('zh-CN', {
-    style: 'currency',
-    currency: 'CNY',
     minimumFractionDigits: 0,
     maximumFractionDigits: 0
   }).format(value);
@@ -468,7 +584,10 @@ const openProjectDetail = (projectId) => {
 }
 
 .tab-btn {
-  padding: 0.5rem 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  height: 2.25rem;
+  padding: 0 1.5rem;
   border: 1px solid #d1d5db;
   border-radius: 0.375rem;
   background-color: white;
@@ -519,7 +638,10 @@ const openProjectDetail = (projectId) => {
 }
 
 .status-btn {
-  padding: 0.375rem 0.875rem;
+  display: inline-flex;
+  align-items: center;
+  height: 2.25rem;
+  padding: 0 0.875rem;
   border: 1px solid #d1d5db;
   border-radius: 0.25rem;
   background-color: white;
@@ -548,7 +670,8 @@ const openProjectDetail = (projectId) => {
 
 .search-box input {
   width: 100%;
-  padding: 0.5rem 1rem 0.5rem 2.5rem;
+  height: 2.25rem;
+  padding: 0 1rem 0 2.5rem;
   border: 1px solid #d1d5db;
   border-radius: 0.375rem;
   font-size: 0.875rem;
@@ -567,7 +690,10 @@ const openProjectDetail = (projectId) => {
 
 /* 导出按钮 */
 .export-btn {
-  padding: 0.5rem 1.25rem;
+  display: inline-flex;
+  align-items: center;
+  height: 2.25rem;
+  padding: 0 1.25rem;
   border: 1px solid #d1d5db;
   border-radius: 0.375rem;
   background-color: white;
@@ -599,9 +725,11 @@ const openProjectDetail = (projectId) => {
 .table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 
 .table th {
+  position: relative;
   text-align: left;
   padding: 0.75rem 1rem;
   font-size: 0.875rem;
@@ -612,11 +740,54 @@ const openProjectDetail = (projectId) => {
   white-space: nowrap;
 }
 
+.resize-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  background: transparent;
+  transition: background-color 0.15s;
+  z-index: 1;
+}
+
+.resize-handle:hover {
+  background-color: #3b82f6;
+}
+
+.table.is-resizing {
+  user-select: none;
+  cursor: col-resize;
+}
+
 .table td {
   padding: 0.75rem 1rem;
   font-size: 0.875rem;
   color: #374151;
   border-bottom: 1px solid #f3f4f6;
+  white-space: nowrap;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 项目编号列：允许换行 */
+.table td.col-project-code {
+  white-space: normal;
+  word-break: break-word;
+  max-width: 160px;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+/* 项目名称列：允许换行，不截断 */
+.table td.col-project-name {
+  white-space: normal;
+  word-break: break-word;
+  max-width: 320px;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .table tr:last-child td {
@@ -666,6 +837,38 @@ const openProjectDetail = (projectId) => {
   color: #92400e;
 }
 
+/* 验收红绿灯标签 */
+.traffic-status-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.traffic-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.traffic-completed {
+  background-color: #d1fae5;
+  color: #065f46;
+}
+
+.traffic-pending {
+  background-color: #fed7aa;
+  color: #9a3412;
+}
+
+.traffic-delayed {
+  background-color: #fee2e2;
+  color: #991b1b;
+}
+
 /* 空状态 */
 .empty-state {
   text-align: center;
@@ -711,7 +914,8 @@ const openProjectDetail = (projectId) => {
 }
 
 .page-size-select {
-  padding: 0.5rem 0.75rem;
+  height: 2.25rem;
+  padding: 0 0.75rem;
   border: 1px solid #d1d5db;
   border-radius: 0.375rem;
   font-size: 0.875rem;
@@ -727,8 +931,8 @@ const openProjectDetail = (projectId) => {
 }
 
 .nav-btn {
-  width: 2rem;
-  height: 2rem;
+  width: 2.25rem;
+  height: 2.25rem;
   display: flex;
   align-items: center;
   justify-content: center;

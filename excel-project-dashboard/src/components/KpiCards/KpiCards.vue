@@ -376,7 +376,7 @@ const formatCurrency = (value) => {
 }
 
 .table th {
-  text-align: left;
+  text-align: center;
   padding: 0.75rem;
   font-size: 0.875rem;
   color: #6b7280;
@@ -385,6 +385,7 @@ const formatCurrency = (value) => {
 }
 
 .table td {
+  text-align: center;
   padding: 0.75rem;
   font-size: 0.875rem;
   color: #374151;

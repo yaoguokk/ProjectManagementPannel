@@ -56,10 +56,14 @@ const setProjectType = (type) => {
 }
 
 .type-btn {
-  padding: 0.5rem 1rem;
+  display: inline-flex;
+  align-items: center;
+  height: 2.25rem;
+  padding: 0 1rem;
   border: 1px solid #d1d5db;
   border-radius: 0.25rem;
   background-color: white;
+  font-size: 0.875rem;
   cursor: pointer;
   transition: all 0.2s;
 }

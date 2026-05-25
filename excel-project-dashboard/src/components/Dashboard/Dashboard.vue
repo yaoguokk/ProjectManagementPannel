@@ -3,7 +3,7 @@
   <Breadcrumbs />
 
   <!-- 主容器区域 -->
-  <div class="main-container">
+  <div class="main-container space-y-6">
     <!-- 区域 A：数据导入 -->
     <div class="upload-section">
       <div class="section-header">
@@ -38,18 +38,18 @@
         <span class="section-badge badge-b">B</span>
         <span class="section-title">数据筛选</span>
       </div>
-      <div class="filter-container">
-        <div class="filter-item">
+      <div class="filter-container flex items-center gap-x-8">
+        <div class="filter-item flex-1">
           <label class="filter-label">时间范围</label>
           <DateRangeFilter v-model:dateRange="filters.dateRange" />
         </div>
-        <div class="filter-item">
+        <div class="filter-item flex-1">
           <label class="filter-label">项目类型</label>
           <ProjectTypeFilter v-model:projectType="filters.projectType" />
         </div>
-        <div class="filter-item">
+        <div class="filter-item flex-1">
           <button
-            class="query-btn"
+            class="query-btn h-9"
             @click="handleQuery"
             :disabled="isLoading"
           >
@@ -236,17 +236,14 @@ const resetFilters = () => {
   border-radius: 0.5rem;
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
   padding: 1.5rem;
-  margin-bottom: 1.5rem;
 }
 
 .filter-container {
-  display: flex;
-  gap: 2rem;
-  align-items: flex-end;
+  /* layout now handled by Tailwind: flex items-center gap-x-8 */
 }
 
 .filter-item {
-  flex: 1;
+  /* flex-1 now set by Tailwind */
 }
 
 .filter-label {
@@ -259,12 +256,12 @@ const resetFilters = () => {
 
 .query-btn {
   width: 100%;
-  padding: 0.75rem 1.5rem;
+  padding: 0 1rem;
   background-color: #3b82f6;
   color: white;
   border: none;
   border-radius: 0.375rem;
-  font-size: 1rem;
+  font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
   transition: background-color 0.2s;
@@ -284,7 +281,6 @@ const resetFilters = () => {
   background-color: white;
   border-radius: 0.5rem;
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-  margin-bottom: 1.5rem;
   padding: 1.5rem;
 }
 
@@ -300,7 +296,7 @@ const resetFilters = () => {
 
 /* === 区域 C：KPI 概览 === */
 .kpi-section {
-  margin-bottom: 1.5rem;
+  /* spacing handled by parent space-y-6 */
 }
 
 /* === 区域 D：项目明细 === */
