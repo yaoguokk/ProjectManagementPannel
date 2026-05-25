@@ -353,9 +353,17 @@ watch(() => props.projects, (newProjects) => {
   }
 }, { immediate: true });
 
-// 获取列的值（优先使用Excel原始列名）
+// 列名 → 程序字段回退映射（自筹项目Excel无"项目经理"/"业务部所"列名，需回退到manager/department）
+const COLUMN_TO_FIELD = {
+  '项目经理': 'manager',
+  '业务部所': 'department',
+};
+
+// 获取列的值（优先使用Excel原始列名，若无则回退到程序字段）
 const getColumnValue = (project, colName) => {
-  return project[colName] !== undefined ? project[colName] : '';
+  if (project[colName] !== undefined) return project[colName];
+  const field = COLUMN_TO_FIELD[colName];
+  return field ? (project[field] || '') : '';
 };
 
 // 判断是否为金额列
