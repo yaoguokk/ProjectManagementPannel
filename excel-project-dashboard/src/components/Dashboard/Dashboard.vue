@@ -301,9 +301,6 @@ const resetFilters = () => {
 
 /* === 区域 D：项目明细 === */
 .project-detail-section {
-  background-color: white;
-  border-radius: 0.5rem;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-  overflow: hidden;
+  /* 不设背景 —— 由 ProjectTable 内部各层分别控制 */
 }
 </style>

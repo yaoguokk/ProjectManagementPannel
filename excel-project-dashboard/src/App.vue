@@ -91,7 +91,5 @@ const hideToast = () => {
 
 .main-content {
   padding: 1rem;
-  max-width: 1400px;
-  margin: 0 auto;
 }
 </style>

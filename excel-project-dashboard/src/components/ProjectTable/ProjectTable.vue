@@ -1,211 +1,218 @@
 <template>
   <div class="project-detail-container">
-    <!-- 第一层：主Tab切换 -->
-    <div class="main-tabs">
-      <button
-        @click="setTab('initial')"
-        class="tab-btn"
-        :class="{ 'active': currentTab === 'initial' }"
-      >
-        初验项目明细
-      </button>
-      <button
-        @click="setTab('final')"
-        class="tab-btn"
-        :class="{ 'active': currentTab === 'final' }"
-      >
-        终验项目明细
-      </button>
-    </div>
-
-    <!-- 第二层：工具栏 -->
-    <div class="toolbar-section">
-      <div class="toolbar-left">
-        <!-- 二级状态过滤器 -->
-        <div class="status-filter-group">
-          <button
-            @click="setStatusFilter('all')"
-            class="status-btn"
-            :class="{ 'active': statusFilter === 'all' }"
-          >
-            全部
-          </button>
-          <button
-            @click="setStatusFilter('accepted')"
-            class="status-btn"
-            :class="{ 'active': statusFilter === 'accepted' }"
-          >
-            已验收
-          </button>
-          <button
-            @click="setStatusFilter('pending')"
-            class="status-btn"
-            :class="{ 'active': statusFilter === 'pending' }"
-          >
-            待验收/待结算
-          </button>
-        </div>
-      </div>
-
-      <div class="toolbar-right">
-        <!-- 列设置 -->
-        <ColumnSelector
-          :availableColumns="allColumnNames"
-          v-model:selectedColumns="visibleColumns"
-          :defaultColumns="defaultColumnNames"
-        />
-
-        <!-- 搜索框 -->
-        <div class="search-box">
-          <input
-            v-model="searchQuery"
-            type="text"
-            placeholder="搜索项目名称或项目经理..."
-            @input="handleSearch"
-          />
-          <svg xmlns="http://www.w3.org/2000/svg" class="search-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-        </div>
-
-        <!-- 导出按钮 -->
+    <!-- 控制区域：tabs + toolbar + pagination，对齐 A/B/C 区域宽度 -->
+    <div class="control-wrapper">
+      <!-- 第一层：主Tab切换 -->
+      <div class="main-tabs">
         <button
-          @click="exportToExcel"
-          class="export-btn"
-          :disabled="!filteredProjects.length"
+          @click="setTab('initial')"
+          class="tab-btn"
+          :class="{ 'active': currentTab === 'initial' }"
         >
-          导出Excel
+          初验项目明细
+        </button>
+        <button
+          @click="setTab('final')"
+          class="tab-btn"
+          :class="{ 'active': currentTab === 'final' }"
+        >
+          终验项目明细
         </button>
       </div>
-    </div>
 
-    <!-- 第三层：数据表格 -->
-    <div class="table-section">
-      <div class="table-container">
-        <table class="table" :class="{ 'is-resizing': !!resizing }" :key="allColumns.join(',')">
-          <colgroup>
-            <col
-              v-for="col in allColumns"
-              :key="col"
-              :style="columnWidths[col] ? { width: columnWidths[col] + 'px', minWidth: columnWidths[col] + 'px' } : {}"
+      <!-- 第二层：工具栏 -->
+      <div class="toolbar-section">
+        <div class="toolbar-left">
+          <!-- 二级状态过滤器 -->
+          <div class="status-filter-group">
+            <button
+              @click="setStatusFilter('all')"
+              class="status-btn"
+              :class="{ 'active': statusFilter === 'all' }"
+            >
+              全部
+            </button>
+            <button
+              @click="setStatusFilter('accepted')"
+              class="status-btn"
+              :class="{ 'active': statusFilter === 'accepted' }"
+            >
+              已验收
+            </button>
+            <button
+              @click="setStatusFilter('pending')"
+              class="status-btn"
+              :class="{ 'active': statusFilter === 'pending' }"
+            >
+              待验收/待结算
+            </button>
+          </div>
+        </div>
+
+        <div class="toolbar-right">
+          <!-- 列设置 -->
+          <ColumnSelector
+            :availableColumns="allColumnNames"
+            v-model:selectedColumns="visibleColumns"
+            :defaultColumns="defaultColumnNames"
+          />
+
+          <!-- 搜索框 -->
+          <div class="search-box">
+            <input
+              v-model="searchQuery"
+              type="text"
+              placeholder="搜索项目名称或项目经理..."
+              @input="handleSearch"
             />
-          </colgroup>
-          <thead>
-            <tr>
-              <th
+            <svg xmlns="http://www.w3.org/2000/svg" class="search-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
+
+          <!-- 导出按钮 -->
+          <button
+            @click="exportToExcel"
+            class="export-btn"
+            :disabled="!filteredProjects.length"
+          >
+            导出Excel
+          </button>
+        </div>
+      </div>
+    </div><!-- /.control-wrapper (tabs + toolbar) -->
+
+    <!-- 第三层：数据表格 — 独立撑满视口宽度 -->
+    <div class="table-breakout">
+      <div class="table-section">
+        <div class="table-container">
+          <table class="table" :class="{ 'is-resizing': !!resizing }" :key="allColumns.join(',')">
+            <colgroup>
+              <col
                 v-for="col in allColumns"
                 :key="col"
-                :class="{ 'amount-header': isAmountColumn(col) }"
-                :style="columnWidths[col] ? { width: columnWidths[col] + 'px' } : {}"
-              >
-                {{ col }}
-                <div
-                  class="resize-handle"
-                  @mousedown.prevent="startResize($event, col)"
-                ></div>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="project in paginatedProjects" :key="project.id">
-              <td
-                v-for="col in visibleColumns"
-                :key="col"
-                :class="{ 'amount': isAmountColumn(col), 'col-project-name': col === '项目名称', 'col-project-code': col === '项目编号' }"
-                :title="getColumnValue(project, col)"
-              >
-                <template v-if="col === '项目名称'">
-                  <a
-                    href="#"
-                    class="project-name"
-                    @click.prevent="openProjectDetail(project.id)"
-                  >
-                    {{ project['项目名称'] || project.projectName }}
-                  </a>
-                </template>
-                <template v-else-if="col === '项目状态'">
-                  <span class="traffic-status-group">
-                    <span
-                      v-if="getTrafficLight(project)"
-                      class="traffic-tag"
-                      :class="getTrafficLight(project).cssClass"
+                :style="columnWidths[col] ? { width: columnWidths[col] + 'px', minWidth: columnWidths[col] + 'px' } : {}"
+              />
+            </colgroup>
+            <thead>
+              <tr>
+                <th
+                  v-for="col in allColumns"
+                  :key="col"
+                  :class="{ 'amount-header': isAmountColumn(col) }"
+                  :style="columnWidths[col] ? { width: columnWidths[col] + 'px' } : {}"
+                >
+                  {{ col }}
+                  <div
+                    class="resize-handle"
+                    @mousedown.prevent="startResize($event, col)"
+                  ></div>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="project in paginatedProjects" :key="project.id">
+                <td
+                  v-for="col in visibleColumns"
+                  :key="col"
+                  :class="{ 'amount': isAmountColumn(col), 'col-project-name': col === '项目名称', 'col-project-code': col === '项目编号' }"
+                  :title="getColumnValue(project, col)"
+                >
+                  <template v-if="col === '项目名称'">
+                    <a
+                      href="#"
+                      class="project-name"
+                      @click.prevent="openProjectDetail(project.id)"
                     >
-                      {{ getTrafficLight(project).label }}
+                      {{ project['项目名称'] || project.projectName }}
+                    </a>
+                  </template>
+                  <template v-else-if="col === '项目状态'">
+                    <span class="traffic-status-group">
+                      <span
+                        v-if="getTrafficLight(project)"
+                        class="traffic-tag"
+                        :class="getTrafficLight(project).cssClass"
+                      >
+                        {{ getTrafficLight(project).label }}
+                      </span>
+                      <span
+                        class="status-tag"
+                        :class="getStatusClass(project['项目状态'] || project.status)"
+                      >
+                        {{ project['项目状态'] || project.status }}
+                      </span>
                     </span>
-                    <span
-                      class="status-tag"
-                      :class="getStatusClass(project['项目状态'] || project.status)"
-                    >
-                      {{ project['项目状态'] || project.status }}
-                    </span>
-                  </span>
-                </template>
-                <template v-else-if="isAmountColumn(col)">
-                  {{ formatCurrency(getColumnValue(project, col)) }}
-                </template>
-                <template v-else>
-                  {{ getColumnValue(project, col) }}
-                </template>
-              </td>
-              <td>{{ getPlanDate(project) }}</td>
-              <td>{{ getActualDate(project) }}</td>
-            </tr>
-          </tbody>
-        </table>
+                  </template>
+                  <template v-else-if="isAmountColumn(col)">
+                    {{ formatCurrency(getColumnValue(project, col)) }}
+                  </template>
+                  <template v-else>
+                    {{ getColumnValue(project, col) }}
+                  </template>
+                </td>
+                <td>{{ getPlanDate(project) }}</td>
+                <td>{{ getActualDate(project) }}</td>
+              </tr>
+            </tbody>
+          </table>
 
-        <div v-if="filteredProjects.length === 0" class="empty-state">
-          <svg xmlns="http://www.w3.org/2000/svg" class="empty-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-          </svg>
-          <p class="empty-text">暂无数据</p>
-        </div>
+          <div v-if="filteredProjects.length === 0" class="empty-state">
+            <svg xmlns="http://www.w3.org/2000/svg" class="empty-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+            </svg>
+            <p class="empty-text">暂无数据</p>
+          </div>
       </div>
     </div>
+    </div><!-- /.table-breakout -->
 
-    <!-- 第四层：底部分页器 -->
-    <div class="pagination-section" v-if="filteredProjects.length > 0">
-      <div class="pagination-left">
-        <select
-          v-model="pageSize"
-          class="page-size-select"
-          @change="handlePageSizeChange"
-        >
-          <option value="10">10条/页</option>
-          <option value="20">20条/页</option>
-          <option value="50">50条/页</option>
-        </select>
-      </div>
-
-      <div class="pagination-center">
-        <div class="page-nav">
-          <button
-            @click="prevPage"
-            :disabled="currentPage === 1"
-            class="nav-btn"
+    <!-- 第四层：底部分页器 — 对齐 A/B/C 区域宽度 -->
+    <div class="control-wrapper" style="margin-top: 1px;">
+      <div class="pagination-section" v-if="filteredProjects.length > 0">
+        <div class="pagination-left">
+          <select
+            v-model="pageSize"
+            class="page-size-select"
+            @change="handlePageSizeChange"
           >
-            &lt;
-          </button>
+            <option value="10">10条/页</option>
+            <option value="20">20条/页</option>
+            <option value="50">50条/页</option>
+          </select>
+        </div>
 
-          <span class="page-info">
-            第 {{ currentPage }} 页，共 {{ totalPages }} 页
-          </span>
+        <div class="pagination-center">
+          <div class="page-nav">
+            <button
+              @click="prevPage"
+              :disabled="currentPage === 1"
+              class="nav-btn"
+            >
+              &lt;
+            </button>
 
-          <button
-            @click="nextPage"
-            :disabled="currentPage >= totalPages"
-            class="nav-btn"
-          >
-            &gt;
-          </button>
+            <span class="page-info">
+              第 {{ currentPage }} 页，共 {{ totalPages }} 页
+            </span>
+
+            <button
+              @click="nextPage"
+              :disabled="currentPage >= totalPages"
+              class="nav-btn"
+            >
+              &gt;
+            </button>
+          </div>
+        </div>
+
+        <div class="pagination-right">
+          <div class="pagination-info">
+            共 {{ filteredProjects.length }} 条
+          </div>
         </div>
       </div>
-
-      <div class="pagination-right">
-        <div class="pagination-info">
-          共 {{ filteredProjects.length }} 条
-        </div>
-      </div>
-    </div>
+    </div><!-- /.control-wrapper (pagination) -->
   </div>
 </template>
 
@@ -575,12 +582,28 @@ const openProjectDetail = (projectId) => {
 </script>
 
 <style scoped>
-/* 项目明细容器 - 白色卡片 */
+/* 项目明细容器 — 无独立背景，由子元素分别控制 */
 .project-detail-container {
+  overflow: visible;
+}
+
+/* 控制区域居中容器 — tabs、toolbar、pagination 对齐 A/B/C 区域宽度 */
+.control-wrapper {
+  max-width: 1400px;
+  margin: 0 auto;
   background-color: white;
   border-radius: 0.5rem;
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
   overflow: hidden;
+}
+
+/* 表格区域 — 独立突破 max-width，撑满视口宽度 */
+.table-breakout {
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  background-color: white;
+  border-top: 1px solid #e5e7eb;
+  border-bottom: 1px solid #e5e7eb;
 }
 
 /* 第一层：主Tab切换 - 左对齐 */
@@ -731,7 +754,6 @@ const openProjectDetail = (projectId) => {
 }
 
 .table {
-  width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
 }
