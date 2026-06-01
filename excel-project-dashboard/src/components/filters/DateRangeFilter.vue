@@ -6,7 +6,7 @@
         class="quick-date-btn"
         :class="{ 'active': dateRangeType === 'month' }"
       >
-        本月
+        年初至本月
       </button>
       <button
         @click="setDateRange('custom')"
@@ -71,13 +71,13 @@ const formatLocalDate = (date) => {
   return `${y}-${m}-${d}`;
 };
 
-// 计算当前月份的日期范围
+// 计算年初至当前月份的日期范围（1月1日 ~ 本月最后一天）
 const currentMonthRange = computed(() => {
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth();
-  const firstDay = new Date(year, month, 1);
-  const lastDay = new Date(year, month + 1, 0);
+  const firstDay = new Date(year, 0, 1); // 今年1月1日
+  const lastDay = new Date(year, month + 1, 0); // 本月最后一天
 
   return {
     start: formatLocalDate(firstDay),
