@@ -131,20 +131,15 @@
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td>经营项目</td>
-              <td>{{ formatCurrency(businessTargetAmount) }}</td>
-              <td>{{ formatCurrency(businessCompletedAmount) }}</td>
-              <td>{{ businessCompletionRate }}%</td>
-              <td>{{ businessCompletedProjects }}/{{ businessProjects }} 个</td>
-            </tr>
-            <tr>
-              <td>自筹项目</td>
-              <td>{{ formatCurrency(selfTargetAmount) }}</td>
-              <td>{{ formatCurrency(selfCompletedAmount) }}</td>
-              <td>{{ selfCompletionRate }}%</td>
-              <td>{{ selfCompletedProjects }}/{{ selfProjects }} 个</td>
-            </tr>
+            <template v-for="row in breakdownData" :key="row.label">
+              <tr :class="{ 'row-group-header': row.isGroupHeader }">
+                <td :class="{ 'group-label': row.isGroupHeader }">{{ row.label }}</td>
+                <td>{{ formatCurrency(row.targetAmount) }}</td>
+                <td>{{ formatCurrency(row.completedAmount) }}</td>
+                <td>{{ row.completionRate }}%</td>
+                <td>{{ row.completedProjects }}/{{ row.totalProjects }} 个</td>
+              </tr>
+            </template>
           </tbody>
         </table>
       </div>
@@ -179,32 +174,44 @@ const finalCompletedAmount = computed(() => finalData.value.completedAmount || 0
 const finalTotalProjects = computed(() => finalData.value.totalProjects || 0);
 const finalCompletedProjectCount = computed(() => finalData.value.completedProjectCount || 0);
 
-// 细分表格数据（展示经营/自筹合计，取初验+终验的总和）
-const businessTargetAmount = computed(() =>
-  (initialData.value.businessTargetAmount || 0) + (finalData.value.businessTargetAmount || 0));
-const businessCompletedAmount = computed(() =>
-  (initialData.value.businessCompletedAmount || 0) + (finalData.value.businessCompletedAmount || 0));
-const businessCompletionRate = computed(() => {
-  const total = businessTargetAmount.value;
-  return total > 0 ? Math.round((businessCompletedAmount.value / total) * 100) : 0;
-});
-const businessProjects = computed(() =>
-  (initialData.value.businessProjects || 0) + (finalData.value.businessProjects || 0));
-const businessCompletedProjects = computed(() =>
-  (initialData.value.businessCompletedProjectCount || 0) + (finalData.value.businessCompletedProjectCount || 0));
+// 细分表格数据：经营/自筹 × 初验/终验/合计，共6行
+const breakdownData = computed(() => {
+  const i = initialData.value;
+  const f = finalData.value;
 
-const selfTargetAmount = computed(() =>
-  (initialData.value.selfTargetAmount || 0) + (finalData.value.selfTargetAmount || 0));
-const selfCompletedAmount = computed(() =>
-  (initialData.value.selfCompletedAmount || 0) + (finalData.value.selfCompletedAmount || 0));
-const selfCompletionRate = computed(() => {
-  const total = selfTargetAmount.value;
-  return total > 0 ? Math.round((selfCompletedAmount.value / total) * 100) : 0;
+  // 辅助：计算单行数据，除零保护
+  const makeRow = (label, target, completed, totalP, completedP, isGroupHeader = false) => {
+    const rate = target > 0 ? Math.round((completed / target) * 100) : 0;
+    return { label, targetAmount: target, completedAmount: completed, completionRate: rate, totalProjects: totalP, completedProjects: completedP, isGroupHeader };
+  };
+
+  // 辅助：两行求和生成合计行
+  const sumRows = (label, row1, row2) => {
+    const target = row1.targetAmount + row2.targetAmount;
+    const completed = row1.completedAmount + row2.completedAmount;
+    const totalP = row1.totalProjects + row2.totalProjects;
+    const completedP = row1.completedProjects + row2.completedProjects;
+    return makeRow(label, target, completed, totalP, completedP, true);
+  };
+
+  const bizInitial = makeRow('经营项目 - 初验',
+    i.businessTargetAmount || 0, i.businessCompletedAmount || 0,
+    i.businessProjects || 0, i.businessCompletedProjectCount || 0);
+  const bizFinal = makeRow('经营项目 - 终验',
+    f.businessTargetAmount || 0, f.businessCompletedAmount || 0,
+    f.businessProjects || 0, f.businessCompletedProjectCount || 0);
+  const bizTotal = sumRows('经营项目 - 合计', bizInitial, bizFinal);
+
+  const selfInitial = makeRow('自筹项目 - 初验',
+    i.selfTargetAmount || 0, i.selfCompletedAmount || 0,
+    i.selfProjects || 0, i.selfCompletedProjectCount || 0);
+  const selfFinal = makeRow('自筹项目 - 终验',
+    f.selfTargetAmount || 0, f.selfCompletedAmount || 0,
+    f.selfProjects || 0, f.selfCompletedProjectCount || 0);
+  const selfTotal = sumRows('自筹项目 - 合计', selfInitial, selfFinal);
+
+  return [bizInitial, bizFinal, bizTotal, selfInitial, selfFinal, selfTotal];
 });
-const selfProjects = computed(() =>
-  (initialData.value.selfProjects || 0) + (finalData.value.selfProjects || 0));
-const selfCompletedProjects = computed(() =>
-  (initialData.value.selfCompletedProjectCount || 0) + (finalData.value.selfCompletedProjectCount || 0));
 
 const initialCircleOffset = computed(() => {
   const circumference = 2 * Math.PI * 54;
@@ -394,6 +401,25 @@ const formatCurrency = (value) => {
 
 .table tr:last-child td {
   border-bottom: none;
+}
+
+.row-group-header td {
+  border-top: 2px solid #d1d5db;
+  border-bottom: 2px solid #d1d5db;
+  font-weight: 600;
+  background-color: #f9fafb;
+}
+
+.row-group-header td:first-child {
+  border-left: 2px solid #d1d5db;
+}
+
+.row-group-header td:last-child {
+  border-right: 2px solid #d1d5db;
+}
+
+.group-label {
+  color: #1f2937;
 }
 
 /* 响应式表格 */

@@ -426,7 +426,8 @@ const filteredProjects = computed(() => {
     const query = searchQuery.value.toLowerCase();
     filtered = filtered.filter(project =>
       project.projectName.toLowerCase().includes(query) ||
-      project.manager.toLowerCase().includes(query)
+      project.manager.toLowerCase().includes(query) ||
+      (project['项目编号'] || '').toLowerCase().includes(query)
     );
   }
 
@@ -592,9 +593,9 @@ const openProjectDetail = (projectId) => {
   max-width: 1400px;
   margin: 0 auto;
   background-color: white;
-  border-radius: 0.5rem;
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-  overflow: hidden;
+  overflow: visible;
+  border-radius: 0.5rem;
 }
 
 /* 表格区域 — 独立突破 max-width，撑满视口宽度 */
@@ -641,6 +642,8 @@ const openProjectDetail = (projectId) => {
 
 /* 第二层：工具栏 - space-between 布局 */
 .toolbar-section {
+  position: relative;
+  z-index: 1;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -756,6 +759,7 @@ const openProjectDetail = (projectId) => {
 .table {
   border-collapse: collapse;
   table-layout: fixed;
+  margin: 0 auto;
 }
 
 .table th {

@@ -10,7 +10,7 @@ export const useProjectData = () => {
   // 过滤条件
   const filters = ref({
     dateRange: { start: '', end: '', type: 'month' },
-    projectType: ProjectType.BUSINESS
+    projectType: ProjectType.ALL
   });
 
   // 项目数据
