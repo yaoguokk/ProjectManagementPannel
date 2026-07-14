@@ -197,6 +197,58 @@ ProjectTable.vue (src/components/ProjectTable/ProjectTable.vue)
 
 **写任何 `===` 或 `switch` 比较前，先确认用的是中文值。**
 
+### 验收业务规则（核心！）
+
+**验收分为"初验"和"终验"两个阶段：**
+
+| 规则 | 说明 |
+|------|------|
+| 初验 | 初步验收，**不是所有项目都有**。部分项目跳过初验直接进入终验 |
+| 终验 | 最终验收，**所有项目必须有终验** |
+
+**"计划验收"的含义（本月计划验收 = 初验 + 终验的并集）：**
+
+```
+本月计划验收项目 =
+  项目计划初验时间含变更 ∈ [本月起止日期]
+  OR 项目计划终验时间含变更 ∈ [本月起止日期]
+```
+
+**判断某个项目是否已完成验收：**
+
+```
+"已完成初验" → 项目实际初验时间 不为空
+"已完成终验" → 项目实际终验时间 不为空
+"未完成初验" → 项目实际初验时间为空
+"未完成终验" → 项目实际终验时间为空
+```
+
+⚠️ 一个项目可以实际初验时间为空（没初验），但实际终验时间一定有值。
+
+**初验 KPI 计算逻辑：**
+
+```
+计划初验（分母）: 所有 planInitialDate ∈ [dateRange] 的项目 → sum(budget)
+完成初验（分子）: 范围内项目中 actualInitialDate ≠空的 → sum(budget)
+初验完成率 = 完成金额 / 计划金额 × 100%
+```
+
+**终验 KPI 计算逻辑：**
+
+```
+计划终验（分母）: 所有 planFinalDate ∈ [dateRange] 的项目 → sum(budget)
+完成终验（分子）: 范围内项目中 actualFinalDate ≠空的 → sum(budget)
+终验完成率 = 完成金额 / 计划金额 × 100%
+```
+
+**"本月计划验收金额"（初验+终验合计）：**
+
+```
+计划验收金额 = sum(budget) WHERE planInitialDate ∈ [range] OR planFinalDate ∈ [range]
+完成验收金额 = sum(budget) WHERE (planInitialDate ∈ [range] AND actualInitialDate≠空)
+                            OR (planFinalDate ∈ [range] AND actualFinalDate≠空)
+```
+
 ### Excel 列名映射 (77列 → 12字段)
 
 | 程序字段 | Excel 列名 | 用途 |
@@ -209,8 +261,8 @@ ProjectTable.vue (src/components/ProjectTable/ProjectTable.vue)
 | budget | 立项收入(元) | KPI金额计算 |
 | planInitialDate | 项目计划初验时间含变更 | C+D初验筛选 |
 | planFinalDate | 项目计划终验时间含变更 | C+D终验筛选 |
-| actualInitialDate | 项目实际初验时间 | KPI完成判定+D状态 |
-| actualFinalDate | 项目实际终验时间 | KPI完成判定+D状态 |
+| actualInitialDate | 项目实际初验时间 | KPI完成判定+D状态（可为空） |
+| actualFinalDate | 项目实际终验时间 | KPI完成判定+D状态（必有值） |
 | startDate | 立项审批完成时间 | 表格展示 |
 | status | 项目状态 | 表格展示+清洗过滤 |
 
