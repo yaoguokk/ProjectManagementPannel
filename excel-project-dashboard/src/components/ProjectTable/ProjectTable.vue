@@ -78,6 +78,15 @@
           >
             导出Excel
           </button>
+
+          <!-- 生成分享图片按钮 -->
+          <button
+            @click="openImageExport"
+            class="image-export-btn"
+            :disabled="!filteredProjects.length"
+          >
+            📷 生成图片
+          </button>
         </div>
       </div>
     </div><!-- /.control-wrapper (tabs + toolbar) -->
@@ -201,6 +210,14 @@
     </div>
     </div><!-- /.table-breakout -->
 
+    <!-- 图片导出对话框 -->
+    <ImageExportModal
+      v-if="showImageExport"
+      :table-ref="tableContainerRef"
+      :title-text="imageExportTitle"
+      @close="showImageExport = false"
+    />
+
     <!-- 第四层：底部分页器 — 对齐 A/B/C 区域宽度 -->
     <div class="control-wrapper" style="margin-top: 1px;">
       <div class="pagination-section" v-if="filteredProjects.length > 0">
@@ -251,9 +268,10 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, onBeforeUnmount, nextTick } from 'vue';
 import * as XLSX from 'xlsx';
 import ColumnSelector from './ColumnSelector.vue';
+import ImageExportModal from './ImageExportModal.vue';
 
 const props = defineProps({
   projects: {
@@ -651,6 +669,25 @@ const exportToExcel = () => {
 const openProjectDetail = (projectId) => {
   emit('open-detail', projectId);
 };
+
+// 图片导出
+const showImageExport = ref(false);
+const tableContainerRef = ref(null);
+const imageExportTitle = computed(() => {
+  const tabLabel = currentTab.value === 'initial' ? '初验' : '终验';
+  const dateRangeStr = props.dateRange?.start
+    ? `${props.dateRange.start?.slice(0, 7)}`
+    : '';
+  return `项目全景面板 — ${dateRangeStr} ${tabLabel}明细`;
+});
+
+const openImageExport = () => {
+  // 获取表格 DOM 引用
+  nextTick(() => {
+    tableContainerRef.value = document.querySelector('.table-container');
+  });
+  showImageExport.value = true;
+};
 </script>
 
 <style scoped>
@@ -676,6 +713,31 @@ const openProjectDetail = (projectId) => {
   background-color: white;
   border-top: 1px solid #e5e7eb;
   border-bottom: 1px solid #e5e7eb;
+}
+
+/* 图片导出按钮 */
+.image-export-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 2.25rem;
+  padding: 0 1rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.375rem;
+  background-color: #fff;
+  color: #374151;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.image-export-btn:hover {
+  background-color: #f3f4f6;
+  border-color: #9ca3af;
+}
+.image-export-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* 验收倒计时列 */
