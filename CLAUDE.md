@@ -9,6 +9,13 @@
 | 初验 | 初步验收，不是所有项目都有。部分项目跳过初验直接进入终验 |
 | 终验 | 最终验收，**所有项目必须有终验** |
 
+**🚫 排除商机项目（不在履约范围内）：**
+
+```
+排除条件: 立项方式 === "基于商机立项"
+原因: 商机项目尚未拿到中标通知书、未签合同，不在履约范围
+```
+
 **"本月计划验收" = 计划初验 ∪ 计划终验（OR 关系）：**
 
 ```
@@ -17,22 +24,25 @@
   OR 项目计划终验时间含变更 ∈ [本月起止日期]
 ```
 
-**验收完成判定：**
+**验收完成判定（含提前完成）：**
 
 ```
-已完成初验 → 项目实际初验时间 ≠ 空
-已完成终验 → 项目实际终验时间 ≠ 空
-未完成   → 对应实际验收时间 = 空
+已完成初验 → 项目实际初验时间 ≤ 本月底（含本月及之前月份）
+已完成终验 → 项目实际终验时间 ≤ 本月底（含本月及之前月份）
+未完成   → 对应实际验收时间 = 空 OR > 本月底
 ```
 
 ⚠️ 项目可以没有初验（实际初验时间为空），但终验必有值。
+⚠️ 提前完成也算完成：计划6月验收的项目，如果实际在5月就验收了，仍算完成。
 
 **KPI 公式：**
 
 ```
-初验完成率 = Σ(budget, actualInitialDate≠空) / Σ(budget, planInitialDate∈[range]) × 100%
-终验完成率 = Σ(budget, actualFinalDate≠空) / Σ(budget, planFinalDate∈[range]) × 100%
+初验完成率 = Σ(budget, actualInitialDate≤月底) / Σ(budget, planInitialDate∈[range]) × 100%
+终验完成率 = Σ(budget, actualFinalDate≤月底) / Σ(budget, planFinalDate∈[range]) × 100%
 计划验收金额 = Σ(budget) WHERE planInitialDate∈[range] OR planFinalDate∈[range]
+完成验收金额 = Σ(budget) WHERE (planInitialDate∈[range] AND actualInitialDate≤月底)
+                            OR (planFinalDate∈[range] AND actualFinalDate≤月底)
 ```
 
 ---

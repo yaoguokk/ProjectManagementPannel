@@ -206,6 +206,15 @@ ProjectTable.vue (src/components/ProjectTable/ProjectTable.vue)
 | 初验 | 初步验收，**不是所有项目都有**。部分项目跳过初验直接进入终验 |
 | 终验 | 最终验收，**所有项目必须有终验** |
 
+**🚫 排除商机项目（不在履约范围内）：**
+
+```
+排除条件: 立项方式 === "基于商机立项"
+原因: 商机项目尚未拿到中标通知书、未签合同，不在履约范围
+```
+
+> 数据清洗阶段（dataCleaner.js）已排除"基于商机立项"的项目，不进入后续KPI计算。
+
 **"计划验收"的含义（本月计划验收 = 初验 + 终验的并集）：**
 
 ```
@@ -214,22 +223,23 @@ ProjectTable.vue (src/components/ProjectTable/ProjectTable.vue)
   OR 项目计划终验时间含变更 ∈ [本月起止日期]
 ```
 
-**判断某个项目是否已完成验收：**
+**判断某个项目是否已完成验收（含提前完成）：**
 
 ```
-"已完成初验" → 项目实际初验时间 不为空
-"已完成终验" → 项目实际终验时间 不为空
-"未完成初验" → 项目实际初验时间为空
-"未完成终验" → 项目实际终验时间为空
+"已完成初验" → 项目实际初验时间 ≤ 本月底（含本月及之前月份）
+"已完成终验" → 项目实际终验时间 ≤ 本月底（含本月及之前月份）
+"未完成初验" → 项目实际初验时间为空 OR 实际初验时间 > 本月底
+"未完成终验" → 项目实际终验时间为空 OR 实际终验时间 > 本月底
 ```
 
 ⚠️ 一个项目可以实际初验时间为空（没初验），但实际终验时间一定有值。
+⚠️ 提前完成也算完成：计划6月验收的项目，如果实际在5月就验收了，仍算完成。
 
 **初验 KPI 计算逻辑：**
 
 ```
 计划初验（分母）: 所有 planInitialDate ∈ [dateRange] 的项目 → sum(budget)
-完成初验（分子）: 范围内项目中 actualInitialDate ≠空的 → sum(budget)
+完成初验（分子）: 范围内项目中 actualInitialDate ≤ 月底的 → sum(budget)
 初验完成率 = 完成金额 / 计划金额 × 100%
 ```
 
@@ -237,7 +247,7 @@ ProjectTable.vue (src/components/ProjectTable/ProjectTable.vue)
 
 ```
 计划终验（分母）: 所有 planFinalDate ∈ [dateRange] 的项目 → sum(budget)
-完成终验（分子）: 范围内项目中 actualFinalDate ≠空的 → sum(budget)
+完成终验（分子）: 范围内项目中 actualFinalDate ≤ 月底的 → sum(budget)
 终验完成率 = 完成金额 / 计划金额 × 100%
 ```
 
@@ -245,8 +255,8 @@ ProjectTable.vue (src/components/ProjectTable/ProjectTable.vue)
 
 ```
 计划验收金额 = sum(budget) WHERE planInitialDate ∈ [range] OR planFinalDate ∈ [range]
-完成验收金额 = sum(budget) WHERE (planInitialDate ∈ [range] AND actualInitialDate≠空)
-                            OR (planFinalDate ∈ [range] AND actualFinalDate≠空)
+完成验收金额 = sum(budget) WHERE (planInitialDate ∈ [range] AND actualInitialDate ≤ 月底)
+                            OR (planFinalDate ∈ [range] AND actualFinalDate ≤ 月底)
 ```
 
 ### Excel 列名映射 (77列 → 12字段)
