@@ -721,15 +721,17 @@ const openImageExport = () => {
   align-items: center;
   gap: 4px;
   height: 2.25rem;
-  padding: 0 1rem;
+  padding: 0 0.75rem;
   border: 1px solid #d1d5db;
   border-radius: 0.375rem;
   background-color: #fff;
   color: #374151;
-  font-size: 0.875rem;
+  font-size: 0.813rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .image-export-btn:hover {
   background-color: #f3f4f6;
@@ -840,8 +842,8 @@ const openImageExport = () => {
 .toolbar-right {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  flex: 1;
+  gap: 0.75rem;
+  flex-shrink: 0;
   justify-content: flex-end;
 }
 
@@ -855,7 +857,7 @@ const openImageExport = () => {
   display: inline-flex;
   align-items: center;
   height: 2.25rem;
-  padding: 0 0.875rem;
+  padding: 0 0.75rem;
   border: 1px solid #d1d5db;
   border-radius: 0.25rem;
   background-color: white;
@@ -864,6 +866,8 @@ const openImageExport = () => {
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .status-btn:hover {
@@ -907,15 +911,17 @@ const openImageExport = () => {
   display: inline-flex;
   align-items: center;
   height: 2.25rem;
-  padding: 0 1.25rem;
+  padding: 0 1rem;
   border: 1px solid #d1d5db;
   border-radius: 0.375rem;
   background-color: white;
   color: #374151;
-  font-size: 0.875rem;
+  font-size: 0.813rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .export-btn:hover {

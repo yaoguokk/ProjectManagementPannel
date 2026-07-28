@@ -150,15 +150,17 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 0.375rem;
   height: 2.25rem;
-  padding: 0 1rem;
+  padding: 0 0.75rem;
   border: 1px solid #d1d5db;
   border-radius: 0.375rem;
   background-color: white;
   color: #374151;
-  font-size: 0.875rem;
+  font-size: 0.813rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .column-settings-btn:hover,
@@ -216,14 +218,20 @@ onBeforeUnmount(() => {
 }
 
 .action-btn {
-  padding: 0.25rem 0.75rem;
+  height: 2.25rem;
+  padding: 0 0.75rem;
   border: 1px solid #e5e7eb;
   border-radius: 0.25rem;
   background-color: white;
   color: #6b7280;
   font-size: 0.75rem;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.15s;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .action-btn:hover {

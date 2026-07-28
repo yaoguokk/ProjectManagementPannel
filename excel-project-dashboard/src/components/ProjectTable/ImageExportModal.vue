@@ -214,13 +214,18 @@ function handleCancel() {
 .btn-cancel,
 .btn-generate,
 .btn-download {
-  padding: 8px 20px;
+  height: 2.25rem;
+  padding: 0 1.25rem;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
   border: 1px solid;
   transition: all 0.2s;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 .btn-cancel {
   background: #fff;

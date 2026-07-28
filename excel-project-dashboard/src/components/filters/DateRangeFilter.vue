@@ -138,13 +138,15 @@ const emitDateRange = () => {
   display: inline-flex;
   align-items: center;
   height: 2.25rem;
-  padding: 0 1rem;
+  padding: 0 0.75rem;
   border: 1px solid #d1d5db;
   border-radius: 0.25rem;
   background-color: white;
-  font-size: 0.875rem;
+  font-size: 0.813rem;
   cursor: pointer;
   transition: all 0.2s;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .quick-date-btn:hover {

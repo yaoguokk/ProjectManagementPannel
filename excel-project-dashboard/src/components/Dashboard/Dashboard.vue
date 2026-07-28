@@ -38,7 +38,7 @@
         <span class="section-badge badge-b">B</span>
         <span class="section-title">数据筛选</span>
       </div>
-      <div class="filter-container flex items-center gap-x-8">
+      <div class="filter-container flex items-end gap-x-8">
         <div class="filter-item flex-1">
           <label class="filter-label">时间范围</label>
           <DateRangeFilter v-model:dateRange="filters.dateRange" />
@@ -256,6 +256,8 @@ const resetFilters = () => {
 
 .query-btn {
   width: 100%;
+  height: 2.25rem;
+  margin-top: 1.813rem;
   padding: 0 1rem;
   background-color: #3b82f6;
   color: white;
@@ -265,6 +267,7 @@ const resetFilters = () => {
   font-weight: 500;
   cursor: pointer;
   transition: background-color 0.2s;
+  white-space: nowrap;
 }
 
 .query-btn:hover:not(:disabled) {
