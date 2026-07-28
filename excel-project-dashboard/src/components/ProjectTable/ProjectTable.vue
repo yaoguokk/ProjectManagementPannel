@@ -153,6 +153,40 @@
                 </td>
                 <td>{{ getPlanDate(project) }}</td>
                 <td>{{ getActualDate(project) }}</td>
+                <td class="countdown-cell">
+                  <div class="countdown">
+                    <div class="countdown-row">
+                      <span class="phase">初验</span>
+                      <template v-if="project.actualInitialDate">
+                        <span class="dot gray"></span><span class="done">已验收</span>
+                      </template>
+                      <template v-else-if="!project.planInitialDate">
+                        <span class="na">—</span>
+                      </template>
+                      <template v-else>
+                        <span class="dot" :class="getCountdownColor(getDaysRemaining(project.planInitialDate))"></span>
+                        <span class="days" :class="getCountdownColor(getDaysRemaining(project.planInitialDate))">
+                          {{ getCountdownText(getDaysRemaining(project.planInitialDate)) }}
+                        </span>
+                      </template>
+                    </div>
+                    <div class="countdown-row">
+                      <span class="phase">终验</span>
+                      <template v-if="project.actualFinalDate">
+                        <span class="dot gray"></span><span class="done">已验收</span>
+                      </template>
+                      <template v-else-if="!project.planFinalDate">
+                        <span class="na">—</span>
+                      </template>
+                      <template v-else>
+                        <span class="dot" :class="getCountdownColor(getDaysRemaining(project.planFinalDate))"></span>
+                        <span class="days" :class="getCountdownColor(getDaysRemaining(project.planFinalDate))">
+                          {{ getCountdownText(getDaysRemaining(project.planFinalDate)) }}
+                        </span>
+                      </template>
+                    </div>
+                  </div>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -279,17 +313,19 @@ const DEFAULT_COL_WIDTHS = {
   '实际初验时间': 140,
   '计划终验时间': 140,
   '实际终验时间': 140,
+  '验收倒计时': 140,
 };
 
 // 列宽调整状态
 const columnWidths = ref({ ...DEFAULT_COL_WIDTHS });
 const resizing = ref(null);
 
-// 所有表格列（可见列 + 两个日期列）
+// 所有表格列（可见列 + 两个日期列 + 倒计时列）
 const allColumns = computed(() => [
   ...visibleColumns.value,
   `计划${currentTab.value === 'initial' ? '初验' : '终验'}时间`,
   `实际${currentTab.value === 'initial' ? '初验' : '终验'}时间`,
+  '验收倒计时',
 ]);
 
 const startResize = (event, column) => {
@@ -457,6 +493,36 @@ const parseLocalDate = (dateStr) => {
   return new Date(+parts[0], parts[1] - 1, +parts[2]);
 };
 
+// 验收倒计时计算
+const getDaysRemaining = (planDate) => {
+  if (!planDate) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const plan = parseLocalDate(planDate);
+  return Math.ceil((plan - today) / (1000 * 60 * 60 * 24));
+};
+
+const getCountdownColor = (days) => {
+  if (days === null) return '';
+  if (days <= 7) return 'red';
+  if (days <= 30) return 'yellow';
+  return 'green';
+};
+
+const getCountdownText = (days) => {
+  if (days === null) return '—';
+  if (days < 0) return `超期${Math.abs(days)}天`;
+  if (days === 0) return '今天';
+  return `${days}天`;
+};
+
+const getCountdownExport = (planDate, actualDate) => {
+  if (actualDate) return '已验收';
+  if (!planDate) return '—';
+  const days = getDaysRemaining(planDate);
+  return getCountdownText(days);
+};
+
 const getTrafficLight = (project) => {
   const planDate = currentTab.value === 'initial'
     ? project.planInitialDate : project.planFinalDate;
@@ -531,12 +597,14 @@ const formatCurrency = (value) => {
 const exportToExcel = () => {
   if (!filteredProjects.value.length) return;
 
-  // 构建导出数据：选中列 + 两个日期列
+  // 构建导出数据：选中列 + 两个日期列 + 倒计时列
   const tabLabel = currentTab.value === 'initial' ? '初验' : '终验';
   const exportColumns = [
     ...visibleColumns.value,
     `计划${tabLabel}时间`,
-    `实际${tabLabel}时间`
+    `实际${tabLabel}时间`,
+    '初验倒计时',
+    '终验倒计时'
   ];
 
   const exportRows = filteredProjects.value.map(project => {
@@ -554,6 +622,9 @@ const exportToExcel = () => {
     // 日期列
     row[`计划${tabLabel}时间`] = getPlanDate(project);
     row[`实际${tabLabel}时间`] = getActualDate(project);
+    // 倒计时列（基于导出当天计算）
+    row['初验倒计时'] = getCountdownExport(project.planInitialDate, project.actualInitialDate);
+    row['终验倒计时'] = getCountdownExport(project.planFinalDate, project.actualFinalDate);
     return row;
   });
 
@@ -605,6 +676,53 @@ const openProjectDetail = (projectId) => {
   background-color: white;
   border-top: 1px solid #e5e7eb;
   border-bottom: 1px solid #e5e7eb;
+}
+
+/* 验收倒计时列 */
+.countdown-cell {
+  min-width: 130px;
+  padding: 6px 10px;
+}
+.countdown {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.countdown-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.countdown-row .phase {
+  color: #6b7280;
+  min-width: 28px;
+}
+.countdown-row .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+.countdown-row .dot.red { background: #ef4444; }
+.countdown-row .dot.yellow { background: #f59e0b; }
+.countdown-row .dot.green { background: #22c55e; }
+.countdown-row .dot.gray { background: #9ca3af; }
+.countdown-row .days {
+  font-weight: 600;
+}
+.countdown-row .days.red { color: #ef4444; }
+.countdown-row .days.yellow { color: #d97706; }
+.countdown-row .days.green { color: #16a34a; }
+.countdown-row .done {
+  color: #9ca3af;
+  font-size: 12px;
+}
+.countdown-row .na {
+  color: #d1d5db;
+  font-size: 12px;
 }
 
 /* 第一层：主Tab切换 - 左对齐 */
@@ -764,7 +882,7 @@ const openProjectDetail = (projectId) => {
 
 .table th {
   position: relative;
-  text-align: left;
+  text-align: center;
   padding: 0.75rem 1rem;
   font-size: 0.875rem;
   font-weight: 600;
