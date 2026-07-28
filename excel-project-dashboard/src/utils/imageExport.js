@@ -12,20 +12,80 @@ import { toPng } from 'html-to-image';
 export async function generateTableImage(element, options = {}) {
   const { addTitle = false, addTimestamp = false, titleText = '项目全景面板' } = options;
 
-  // 1. 使用 html-to-image 生成基础图片
-  const baseUrl = await toPng(element, {
-    cacheBust: true,
-    pixelRatio: 2, // 高清 2x
-    backgroundColor: '#ffffff',
-  });
+  // 临时解除容器约束，让表格完整渲染
+  const expandResult = expandTableForCapture(element);
 
-  // 2. 如果不需叠加，直接返回
-  if (!addTitle && !addTimestamp) {
-    return baseUrl;
+  try {
+    // 等浏览器重绘
+    await new Promise((r) => requestAnimationFrame(r));
+    await new Promise((r) => requestAnimationFrame(r));
+
+    // 使用 html-to-image 生成基础图片
+    const baseUrl = await toPng(element, {
+      cacheBust: true,
+      pixelRatio: 2, // 高清 2x
+      backgroundColor: '#ffffff',
+      width: element.scrollWidth, // 指定完整宽度
+    });
+
+    // 如果不需叠加，直接返回
+    if (!addTitle && !addTimestamp) {
+      return baseUrl;
+    }
+
+    // 用 Canvas 叠加标题/水印
+    return await overlayOnCanvas(baseUrl, { addTitle, addTimestamp, titleText });
+  } finally {
+    // 恢复原始样式
+    restoreTableAfterCapture(expandResult);
   }
+}
 
-  // 3. 用 Canvas 叠加标题/水印
-  return await overlayOnCanvas(baseUrl, { addTitle, addTimestamp, titleText });
+/**
+ * 临时展开表格容器，确保完整宽度渲染
+ */
+function expandTableForCapture(element) {
+  const table = element.querySelector('table') || element;
+  const container = table.closest('.table-breakout') || table.parentElement;
+  const tableSection = table.closest('.table-section') || table.parentElement;
+
+  // 记录原始样式
+  const saved = {
+    container: {
+      overflow: container.style.overflow,
+      overflowX: container.style.overflowX,
+    },
+    tableSection: {
+      overflow: tableSection.style.overflow,
+    },
+    table: {
+      width: table.style.width,
+      maxWidth: table.style.maxWidth,
+      tableLayout: table.style.tableLayout,
+    },
+  };
+
+  // 临时解除约束
+  container.style.overflow = 'visible';
+  container.style.overflowX = 'visible';
+  tableSection.style.overflow = 'visible';
+  table.style.width = table.scrollWidth + 'px';
+  table.style.maxWidth = 'none';
+  table.style.tableLayout = 'auto';
+
+  return { container, tableSection, table, saved };
+}
+
+/**
+ * 恢复表格容器原始样式
+ */
+function restoreTableAfterCapture({ container, tableSection, table, saved }) {
+  container.style.overflow = saved.container.overflow;
+  container.style.overflowX = saved.container.overflowX;
+  tableSection.style.overflow = saved.tableSection.overflow;
+  table.style.width = saved.table.width;
+  table.style.maxWidth = saved.table.maxWidth;
+  table.style.tableLayout = saved.table.tableLayout;
 }
 
 async function overlayOnCanvas(baseUrl, options) {
