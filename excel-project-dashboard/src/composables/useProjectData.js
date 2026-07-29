@@ -2,16 +2,30 @@ import { ref, computed } from 'vue';
 import { calculateKpiData } from '../data/projectData';
 import { ProjectType } from '../constants/projectStatus';
 
+export const createDefaultFilters = () => {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), 0, 1);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const formatDate = (date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
+  return {
+    dateRange: { start: formatDate(start), end: formatDate(end), type: 'month' },
+    projectType: ProjectType.ALL
+  };
+};
+
 /**
  * 项目数据管理组合式函数
  * 封装项目数据的过滤、计算和状态管理逻辑
  */
 export const useProjectData = () => {
   // 过滤条件
-  const filters = ref({
-    dateRange: { start: '', end: '', type: 'month' },
-    projectType: ProjectType.ALL
-  });
+  const filters = ref(createDefaultFilters());
 
   // 项目数据
   const projects = ref([]);

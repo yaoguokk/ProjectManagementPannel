@@ -1,19 +1,21 @@
 import { ref } from 'vue';
 import { ToastType } from '../constants/projectStatus';
 
+// Toast 是应用级 UI 状态：所有组件必须读写同一个引用。
+const toast = ref({
+  show: false,
+  message: '',
+  type: ToastType.INFO,
+  duration: 3000
+});
+
+let hideTimer = null;
+
 /**
  * Toast提示管理组合式函数
  * 提供全局Toast提示功能
  */
 export const useToast = () => {
-  // Toast状态
-  const toast = ref({
-    show: false,
-    message: '',
-    type: ToastType.INFO,
-    duration: 3000
-  });
-
   /**
    * 显示成功提示
    * @param {string} message - 提示消息
@@ -57,6 +59,10 @@ export const useToast = () => {
    * @param {number} duration - 显示时长（毫秒）
    */
   const showToast = (message, type = ToastType.INFO, duration = 3000) => {
+    if (hideTimer) {
+      clearTimeout(hideTimer);
+    }
+
     toast.value = {
       show: true,
       message,
@@ -65,7 +71,7 @@ export const useToast = () => {
     };
 
     // 自动隐藏
-    setTimeout(() => {
+    hideTimer = setTimeout(() => {
       hideToast();
     }, duration);
   };
@@ -75,6 +81,10 @@ export const useToast = () => {
    */
   const hideToast = () => {
     toast.value.show = false;
+    if (hideTimer) {
+      clearTimeout(hideTimer);
+      hideTimer = null;
+    }
   };
 
   return {

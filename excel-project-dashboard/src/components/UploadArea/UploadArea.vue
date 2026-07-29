@@ -207,6 +207,7 @@ const validateFileName = (fileName) => {
 // 处理文件上传
 const handleFile = async (file) => {
   const config = ACCEPT_CONFIG[props.acceptType];
+  let progressInterval = null;
   const fileId = Date.now().toString();
   const fileObj = {
     id: fileId,
@@ -225,7 +226,7 @@ const handleFile = async (file) => {
     validateFileName(file.name);
 
     // 模拟进度
-    const progressInterval = setInterval(() => {
+    progressInterval = setInterval(() => {
       if (uploadProgress.value < 90) {
         uploadProgress.value += 10;
       }
@@ -238,6 +239,7 @@ const handleFile = async (file) => {
     const cleanedData = config.cleaner(result.rawData, file.name);
 
     clearInterval(progressInterval);
+    progressInterval = null;
     uploadProgress.value = 100;
 
     // 更新文件状态
@@ -267,6 +269,9 @@ const handleFile = async (file) => {
     showToast(error.message, 'error');
     emit('file-error', error);
   } finally {
+    if (progressInterval) {
+      clearInterval(progressInterval);
+    }
     isUploading.value = false;
     uploadProgress.value = 0;
 

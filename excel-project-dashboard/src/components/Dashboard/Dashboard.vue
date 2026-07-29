@@ -97,9 +97,8 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue';
-import { useProjectData } from '../../composables/useProjectData';
+import { useProjectData, createDefaultFilters } from '../../composables/useProjectData';
 import { useToast } from '../../composables/useToast';
-import { ProjectType } from '../../constants/projectStatus';
 import Breadcrumbs from '../common/Breadcrumbs.vue';
 import DateRangeFilter from '../filters/DateRangeFilter.vue';
 import ProjectTypeFilter from '../filters/ProjectTypeFilter.vue';
@@ -109,7 +108,7 @@ import EmptyState from '../common/EmptyState.vue';
 import UploadArea from '../UploadArea/UploadArea.vue';
 
 const { filters, kpiData, projects, updateFilters, applyFilters } = useProjectData();
-const { toast, showSuccess, showError, showToast } = useToast();
+const { showSuccess, showError, showToast } = useToast();
 
 const isLoading = ref(false);
 const businessProjects = ref([]);
@@ -181,10 +180,7 @@ const handleFileError = (error) => {
 
 // 重置筛选条件
 const resetFilters = () => {
-  updateFilters({
-    dateRange: { start: '', end: '', type: 'month' },
-    projectType: ProjectType.BUSINESS
-  });
+  updateFilters(createDefaultFilters());
 };
 </script>
 

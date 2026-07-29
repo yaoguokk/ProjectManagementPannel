@@ -50,7 +50,7 @@ test.describe('Excel Project Dashboard E2E', () => {
 
   test('should display upload area', async ({ page }) => {
     await expect(page.locator('.upload-section')).toBeVisible();
-    await expect(page.locator('.upload-area')).toBeVisible();
-    await expect(page.locator('.upload-title')).toBeVisible();
+    await expect(page.locator('.upload-area')).toHaveCount(2);
+    await expect(page.locator('.upload-title')).toHaveCount(2);
   });
 });

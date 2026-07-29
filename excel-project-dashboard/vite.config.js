@@ -7,5 +7,6 @@ export default defineConfig({
   plugins: [vue(), viteSingleFile()],
   server: {
     port: 5173,
+    strictPort: true,
   },
 })
