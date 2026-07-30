@@ -53,4 +53,24 @@ test.describe('Excel Project Dashboard E2E', () => {
     await expect(page.locator('.upload-area')).toHaveCount(2);
     await expect(page.locator('.upload-title')).toHaveCount(2);
   });
+
+  test('should switch between basic and global search modes', async ({ page }) => {
+    const searchMode = page.getByRole('combobox', { name: '搜索范围' });
+    const searchInput = page.locator('.search-input-wrapper input');
+
+    await expect(searchMode).toHaveValue('basic');
+    await expect(searchInput).toHaveAttribute('placeholder', '输入关键词...');
+    const searchHelp = page.getByRole('button', { name: '搜索使用说明' });
+    await expect(searchHelp).toHaveCount(1);
+    await searchHelp.click();
+    await expect(page.getByRole('tooltip')).toContainText('搜索使用说明');
+
+    await searchMode.selectOption('global');
+    await expect(searchInput).toHaveAttribute('placeholder', '输入全字段关键词...');
+
+    const matchMode = page.getByRole('combobox', { name: '关键词匹配方式' });
+    await expect(matchMode).toHaveValue('any');
+    await matchMode.selectOption('all');
+    await expect(matchMode).toHaveValue('all');
+  });
 });
