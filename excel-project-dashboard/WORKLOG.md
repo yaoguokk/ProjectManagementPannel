@@ -28,7 +28,7 @@
 - 只切换展示口径，不改变数据清洗、上传分发、D 区域列取值、KPI 统计与 B 区域筛选。
 - 新增字段名固定为 `projectTypeLabel`，避免与内部 `projectType` 混淆；两处代码注释已标明用途。
 - 台账缺「项目类型」列时透传为空串，展示/导出回退 `-`，不回退成经营 / 自筹字样。
-- 本轮改动**尚未提交**。
+- 本轮改动已与 E 区域表头筛选一并提交为 `07b14cd`，并推送 `origin/main`。
 
 ---
 
@@ -55,7 +55,7 @@
 - 单元格用台账原值，空值显示 `-`；表头筛选取原值，空值归入 `(空白)`（与「计划终验时间」同口径）。
 - 只增加展示与筛选，不改变 `calculateCostAnalysis` 的项目类型过滤（B 区域筛选仍由上层 filters 控制）。
 - 展示 / 隐藏仍跟随列设置，刷新回到默认全部列（未做持久化）。
-- 与本条同批的 E 表头筛选改动一样，本条改动**尚未提交**，HEAD 仍为 `78f9e69`。
+- 本条的「经营 / 自筹」展示口径随后被上一条「修正取值口径」取代（改取台账原值）；两批改动最终一并提交为 `07b14cd`。
 
 ---
 
@@ -86,7 +86,7 @@
 - 表头筛选与「超支筛选」「关键词搜索」叠加（AND），导出与图片导出跟随当前结果。
 - 隐藏列（列设置）上的筛选依然生效，只有「清除表头筛选（n）」的计数会提示有隐性条件。
 - 项目编号 / 项目名称是唯一值列，下拉会有很多"计数 1"的项，用搜索框缩小即可；这是 Excel 的既有行为，未做特殊裁剪。
-- 本轮改动**尚未提交**：`git status --short` 为 `README.md` / `WORKLOG.md` / `CostTable.vue` / `CostTableGrid.vue` / `costTableColumns.js` 已修改，`columnFilters.js` / `ColumnFilterDropdown.vue` / 两个测试文件未跟踪；HEAD 仍为 `78f9e69`，`main` 与 `origin/main` 同步。
+- 本轮改动已提交为 `07b14cd`（含新增的 `columnFilters.js` / `ColumnFilterDropdown.vue` 与两个测试文件，13 files changed）；推送 `origin/main` 后 `main` 与 `origin/main` 同步。
 - `excel-project-dashboard/dev.log` 是 dev server 日志，已被根 `.gitignore` 的 `*.log` 忽略，不进版本库。
 
 ---
