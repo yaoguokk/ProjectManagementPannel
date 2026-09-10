@@ -64,6 +64,7 @@ src/
 │   ├── filters/           # DateRangeFilter / ProjectTypeFilter
 │   └── common/            # Breadcrumbs / EmptyState / Toast
 │                          # ColumnSelector / TableSearchBox / ImageExportModal
+│                          # ColumnFilterDropdown（E 区域表头筛选下拉）
 ├── composables/
 │   ├── useProjectData.js  # 筛选状态 + KPI 计算 + 数据过滤
 │   ├── useColumnResize.js # D/E 共用：表头拖拽调整列宽
@@ -75,7 +76,8 @@ src/
 │   ├── excelParser.js     # SheetJS 解析（支持 skipRows）
 │   ├── dataCleaner.js     # 精确列名映射 + 过滤 + 格式化
 │   ├── tableSearch.js     # D/E 共用搜索语义（范围 / 匹配方式 / 取值口径）
-│   ├── costTableColumns.js# E 区域列模型 + 单元格构造（含默认列宽）
+│   ├── costTableColumns.js# E 区域列模型 + 单元格构造（含默认列宽 + 筛选取值）
+│   ├── columnFilters.js   # E 区域表头筛选 / 排序纯逻辑（计数、占比、数值条件）
 │   ├── departmentDisplay.js# 业务部所展示口径（全部 / 仅部门）
 │   ├── uploadRouting.js   # 批量上传路由与校验（关键词匹配 + 整批拒绝）
 │   ├── imageExport.js     # 表格截图导出
@@ -156,6 +158,21 @@ E 区域「业务部所」列支持两种展示方式（`utils/departmentDisplay
 - 经营项目「业务部所」本身即部门名，两种方式结果一致。
 - 搜索取值口径始终使用台账原值，切换展示方式不影响搜索结果。
 - Excel 导出的业务部所跟随当前展示方式，保持「所见即所得」。
+
+### 表头筛选与排序（E 区域）
+
+每列表头右侧有漏斗按钮，点开后是与 Excel 一致的下拉：排序（升序 / 降序 / 清除）+ 取值列表（可搜索、全选、反选、清除筛选），每个取值后跟着**数量与占比**。
+
+- 计数与占比的基数是「其他列筛选之后」的数据（排除自身列），勾掉一个取值后还能勾回来。
+- 空值单独归入 `(空白)`；同列多选取值是**或**，跨列是**与**。
+- 数值列（金额 / 合计）不列举取值，改为条件筛选：等于、不等于、大于、小于、介于；
+  介于可只填一端，留空表示该端不限。
+- 「筛选」按数据条件生效，与列设置（隐藏列）解耦：隐藏了列，该列筛选依旧生效。
+- 重新上传数据会重置表头筛选与排序，避免旧取值把表格筛空。
+- 取值口径：分类列用原始值（业务部所切换展示方式不影响筛选），状态列用单元格文案（超支 / 正常）。
+- 固定列含「项目类型」，取**台账原始「项目类型」列**（如 工程集成类 / 产品销售类 / 研究咨询类 / 技术研究类），与 D 区域同名列口径一致；列表格展示、下拉筛选计数、关键词搜索、超支详情弹窗与 Excel 导出全部取该值，缺列时显示 `-`。
+- 区分：内部 `projectType`（经营项目 / 自筹项目）只用于 B 区域顶部「项目类型」筛选与成本数据过滤，不在 E 区域列、弹窗或导出中出现。
+- 实现：`utils/columnFilters.js` 负责统计与匹配，`common/ColumnFilterDropdown.vue` 负责面板，列定义在 `utils/costTableColumns.js` 里声明 `filter` 与 `getFilterValue`。
 
 ### 明细表格通铺布局
 

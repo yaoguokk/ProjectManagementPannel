@@ -2,6 +2,95 @@
 
 ---
 
+## [2026-09-10] 修正 E 区域「项目类型」取值口径：改取台账原值
+
+**总目标**：E 区域成本明细表与超支详情弹窗的「项目类型」不再显示内部类别（经营项目 / 自筹项目），改取台账原始「项目类型」列（工程集成类 / 产品销售类 / 研究咨询类 / 技术研究类 等），与 D 区域同名列口径一致；经营 / 自筹只保留在 B 区域顶部筛选。
+
+**状态**：✅ 完成
+
+**干到哪了**：
+- [x] `data/costData.js`：`buildCostRow` 新增透传字段 `projectTypeLabel: project['项目类型'] || ''`（台账原值口径），保留内部 `projectType` 供 B 区域筛选与 `calculateCostAnalysis` 过滤；`FIXED_EXPORT_COLUMNS['项目类型']` 改取 `projectTypeLabel || '-'`。
+- [x] `utils/costTableColumns.js`：「项目类型」列 `getFilterValue` 与 `buildCostCell` 同步改取 `projectTypeLabel`（空值 `-`），列宽 100 / 列序 / `filter: VALUE` 均未动。
+- [x] `components/CostControl/CostDetailModal.vue`：项目信息条「项目类型」改为 `row.projectTypeLabel || '-'`。
+- [x] `components/CostControl/CostTable.vue`：全局搜索取值追加 `row.projectTypeLabel`（保留 `row.projectType`，输入「经营 / 自筹」仍可命中）。
+- [x] 测试：`tests/costTableColumns.test.js` 夹具补 `projectTypeLabel`、新增「表头筛选取值与单元格同源」断言；`tests/costTableHeaderFilter.test.js` 项目类型下拉用例改为按台账原值计数（研究咨询类 2 / 信息系统开发类 1 / 产品销售类 1）并断言面板**不出现**经营 / 自筹；`tests/costData.test.js` 夹具补中文「项目类型」键、导出断言由 `经营项目` 改为 `研究咨询类`，新增「透传字段与内部口径并存」「缺列回退空串」两条防回归用例。
+- [x] `README.md`「表头筛选与排序（E 区域）」补两条口径说明（展示/筛选/搜索/导出统一取台账原值；内部口径只用于 B 区域筛选）。
+
+**验证证据**：
+- `npm run test:run`：166/166 通过（13 个测试文件，较上一轮 163 项新增 3 项）。
+- `npm run build`：构建通过（663 modules，产物 `dist/index.html` 1,772.65 kB）；已按惯例覆盖导出文件 `项目全景面板_20260910.html`（1,785,363 字节，23:05 写入，与 dist 产物哈希一致）。
+- 真机核对（dev server + 上传 3 个真实源文件，206 行）：E 区域「项目类型」列显示台账原值，下拉计数 `产品销售类（190）92.2%`、`工程集成类（9）4.4%`、`研究咨询类（3）1.5%`、`共享资源设施购置类 / 技术创新平台类 / 技术研究类-应用研究 / 其他技改 各（1）0.5%`，`全选（206）`，面板内无「经营项目 / 自筹项目」。
+- 同口径核对：首行「科创湾6号楼3F联合产线装修建设项目」单元格为 `其他技改`，打开超支详情弹窗显示 `项目类型 其他技改`。
+- B 区域回归：点「自筹项目」+ 查询后，E 区域只剩 `其他技改 / 技术创新平台类 / 技术研究类-应用研究 / 共享资源设施购置类`，无经营台账的 `工程集成类 / 产品销售类`，证明内部口径过滤未被破坏。
+- 本次改动文件 `read_lints` 0 报错；核对用临时脚本与截图已删除。
+
+**边界**：
+- 只切换展示口径，不改变数据清洗、上传分发、D 区域列取值、KPI 统计与 B 区域筛选。
+- 新增字段名固定为 `projectTypeLabel`，避免与内部 `projectType` 混淆；两处代码注释已标明用途。
+- 台账缺「项目类型」列时透传为空串，展示/导出回退 `-`，不回退成经营 / 自筹字样。
+- 本轮改动**尚未提交**。
+
+---
+
+## [2026-09-10] E 区域明细表新增「项目类型」列
+
+**总目标**：E 区域成本明细表展示「项目类型」（经营 / 自筹），可被列设置开关、可被表头筛选，并随 Excel 导出。
+
+**状态**：✅ 完成
+
+**干到哪了**：
+- [x] `utils/costTableColumns.js`：`HEAD_COLUMNS` 在「业务部所」之后插入 `projectType` 列（宽 100px，取 D 区域同名列宽），`filter: VALUE`、`getFilterValue: (row) => row.projectType`；`buildCostCell` 增加 `projectType` 分支（空值显示 `-`）。
+- [x] `data/costData.js`：`FIXED_EXPORT_COLUMNS` 补 `项目类型`，该列重新参与导出（此前因表格无此列而默认不导出）。
+- [x] 列序变为「项目编号 → 项目名称 → 项目经理 → 业务部所 → 项目类型 → 计划终验时间」，与 D 区域一致；列设置默认全选，所以新列默认展示。
+- [x] 测试：`tests/costTableColumns.test.js` 固定列 11→12、首 6 列断言、新增「项目类型展示与占位符」；`tests/costTableHeaderFilter.test.js` 表头 17→18、夹具补 `projectType`、新增「按经营 / 自筹筛选」（经营 3 / 自筹 1，取消经营后只剩 1 行）；`tests/costData.test.js` 缺省导出表头补 `项目类型` 并断言取值。
+- [x] README「表头筛选与排序（E 区域）」补充项目类型列说明。
+
+**验证证据**：
+- `npm run test:run`：163/163 通过（13 个测试文件，较上一轮 161 项新增 2 项）。
+- `npm run build`：构建通过（663 modules，产物 `dist/index.html` 1,772.57 kB）。
+- 已用新构建覆盖导出文件 `项目全景面板_20260910.html`（1,785,283 字节，22:50 写入）。
+- 本地 dev server（http://127.0.0.1:5173/）返回 200；本次改动的 5 个文件 `read_lints` 0 报错。
+
+**边界**：
+- 单元格用台账原值，空值显示 `-`；表头筛选取原值，空值归入 `(空白)`（与「计划终验时间」同口径）。
+- 只增加展示与筛选，不改变 `calculateCostAnalysis` 的项目类型过滤（B 区域筛选仍由上层 filters 控制）。
+- 展示 / 隐藏仍跟随列设置，刷新回到默认全部列（未做持久化）。
+- 与本条同批的 E 表头筛选改动一样，本条改动**尚未提交**，HEAD 仍为 `78f9e69`。
+
+---
+
+## [2026-09-10] E 区域表头筛选（Excel 风格）
+
+**总目标**：E 区域明细表每列表头可像 Excel 一样筛选，下拉里列出该列取值并显示**数量与占比**。
+
+**状态**：✅ 完成
+
+**干到哪了**：
+- [x] 新增 `src/utils/columnFilters.js`：筛选取值、计数/占比、同列 OR + 跨列 AND、数值条件、排序（纯函数）。
+- [x] 新增 `src/components/common/ColumnFilterDropdown.vue`：排序 + 搜索 + 全选/反选/清除 + 计数占比列表 + 数值条件。
+- [x] `utils/costTableColumns.js`：每列声明 `filter` 类型与 `getFilterValue`，筛选与排序复用单元格口径。
+- [x] `CostTableGrid.vue`：表头加漏斗入口与排序箭头；下拉用 fixed 定位，避开表格容器 overflow 裁切。
+- [x] `CostTable.vue`：筛选链「超支筛选 → 搜索 → 表头筛选 → 排序」，工具栏加「清除表头筛选（n）」，换数据自动重置。
+- [x] 新增单测 `tests/columnFilters.test.js`（20 项）与组件测试 `tests/costTableHeaderFilter.test.js`（10 项）。
+- [x] README（`excel-project-dashboard/README.md`）新增「表头筛选与排序（E 区域）」章节，并在项目结构树中登记 `columnFilters.js` 与 `common/ColumnFilterDropdown.vue`。
+
+**验证证据**：
+- `npm run test:run`：161/161 通过（13 个测试文件，较上一轮 131 项新增 30 项）。
+- `npm run build`：构建通过；产物中已含 `column-filter-panel` / `filter-trigger` / 「清除表头筛选」「搜索取值，空格分隔多个关键字」「(空白)」等新文案与类名。
+- 真机核对（Edge + 真实台账与合同）：上传 3 个源文件后 E 区域 206 行；「超支成本类型」下拉显示 `(空白)（201）97.6%`、`项目分包费（3）1.5%`、`软硬件采购（2）1.0%`，`全选（206）`；「差额合计」下拉为数值条件（等于/介于）。截图核对时用临时脚本，核对后已删除。
+- 已用新构建覆盖导出文件 `项目全景面板_20260910.html`，本地 dev server 返回 200。
+- 收尾复跑（同一份工作区状态）：`npm run test:run` 161/161、`npm run build` 通过并再次覆盖 `项目全景面板_20260910.html`（1,785,040 字节）；本次改动的 5 个源文件 `read_lints` 0 报错。
+
+**边界**：
+- 只做 E 区域成本管控明细表；D 区域与 A/B/C 未动，`columnFilters.js` 与 `ColumnFilterDropdown.vue` 已按通用能力抽出，D 区域接入只需在列模型声明 `filter` / `getFilterValue`。
+- 表头筛选与「超支筛选」「关键词搜索」叠加（AND），导出与图片导出跟随当前结果。
+- 隐藏列（列设置）上的筛选依然生效，只有「清除表头筛选（n）」的计数会提示有隐性条件。
+- 项目编号 / 项目名称是唯一值列，下拉会有很多"计数 1"的项，用搜索框缩小即可；这是 Excel 的既有行为，未做特殊裁剪。
+- 本轮改动**尚未提交**：`git status --short` 为 `README.md` / `WORKLOG.md` / `CostTable.vue` / `CostTableGrid.vue` / `costTableColumns.js` 已修改，`columnFilters.js` / `ColumnFilterDropdown.vue` / 两个测试文件未跟踪；HEAD 仍为 `78f9e69`，`main` 与 `origin/main` 同步。
+- `excel-project-dashboard/dev.log` 是 dev server 日志，已被根 `.gitignore` 的 `*.log` 忽略，不进版本库。
+
+---
+
 ## [2026-09-10] A 区域批量上传：任一入口一次选 1-3 个文件，按文件名自动分发
 
 **总目标**：点任意一个「选择文件」按钮都能一次选择 1-3 个 Excel，系统按文件名关键词自动分发到经营 / 自筹 / 支出合同三个数据入口；出现 2 份同类型台账或无关文件时，提示「上传文件有误」并整批拒绝。

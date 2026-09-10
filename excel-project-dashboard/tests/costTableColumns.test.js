@@ -15,6 +15,9 @@ const makeRow = (overrides = {}) => ({
   projectName: '智慧城市项目',
   manager: '张三',
   department: '信息技术部',
+  // 内部口径（经营 / 自筹）与台账原值同时存在，展示必须取后者
+  projectType: '经营项目',
+  projectTypeLabel: '研究咨询类',
   planFinalDate: '2026-06-30',
   categories: [
     { key: 'subcontract', label: '项目分包费', budget: 1000, actual: 1500, diff: 500, over: true },
@@ -32,7 +35,7 @@ const makeRow = (overrides = {}) => ({
 describe('costTableColumns', () => {
   test('列集合 = 固定列 + 动态分类列', () => {
     const labels = buildCostColumns([makeRow()]).map((col) => col.label);
-    expect(labels.slice(0, 5)).toEqual(['项目编号', '项目名称', '项目经理', '业务部所', '计划终验时间']);
+    expect(labels.slice(0, 6)).toEqual(['项目编号', '项目名称', '项目经理', '业务部所', '项目类型', '计划终验时间']);
     expect(labels).toContain('项目分包费-立项');
     expect(labels).toContain('项目分包费-实际');
     expect(labels).toContain('项目分包费-差额');
@@ -48,8 +51,8 @@ describe('costTableColumns', () => {
   });
 
   test('无数据时只返回固定列', () => {
-    expect(buildCostColumns([])).toHaveLength(11);
-    expect(buildCostColumns()).toHaveLength(11);
+    expect(buildCostColumns([])).toHaveLength(12);
+    expect(buildCostColumns()).toHaveLength(12);
   });
 
   test('差额单元格：超支标红、未超支置灰', () => {
@@ -103,10 +106,23 @@ describe('costTableColumns', () => {
 
     expect(widthOf('code')).toBe(160);
     expect(widthOf('department')).toBe(220);
+    expect(widthOf('projectType')).toBe(100);
     expect(widthOf('subcontract-budget')).toBe(110);
     expect(widthOf('subcontract-actual')).toBe(110);
     expect(widthOf('subcontract-diff')).toBe(110);
     expect(columns.every((col) => col.width > 0)).toBe(true);
+  });
+
+  test('项目类型列：展示台账原值而非内部经营 / 自筹口径，空值显示占位符', () => {
+    const cell = buildCostCell(makeRow(), { key: 'projectType' });
+    expect(cell.text).toBe('研究咨询类');
+    expect(cell.text).not.toBe('经营项目');
+    expect(buildCostCell(makeRow({ projectTypeLabel: '' }), { key: 'projectType' }).text).toBe('-');
+  });
+
+  test('项目类型列的表头筛选取值与单元格同源（台账原值）', () => {
+    const column = buildCostColumns([makeRow()]).find((col) => col.key === 'projectType');
+    expect(column.getFilterValue(makeRow())).toBe('研究咨询类');
   });
 
   test('金额与差额格式化', () => {

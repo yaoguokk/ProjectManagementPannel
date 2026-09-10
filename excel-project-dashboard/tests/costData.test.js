@@ -16,7 +16,9 @@ const makeProject = (overrides = {}) => ({
   projectName: '智慧城市项目',
   manager: '张三',
   department: '信息技术部',
+  // 内部口径（经营 / 自筹）与台账原始「项目类型」列并存
   projectType: '经营项目',
+  '项目类型': '研究咨询类',
   planFinalDate: '2026-06-30',
   actualFinalDate: '',
   '项目分包费(元)': '1000000',
@@ -167,6 +169,28 @@ describe('calculateCostAnalysis > 过滤', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].projectType).toBe('自筹项目');
   });
+
+  test('成本行应透传台账原始「项目类型」，同时保留内部经营 / 自筹口径', () => {
+    const { rows } = calculateCostAnalysis(
+      [makeProject({ projectType: '自筹项目', '项目类型': '技术研究类-基础研究' })],
+      [],
+      { dateRange: DATE_RANGE }
+    );
+
+    expect(rows[0].projectTypeLabel).toBe('技术研究类-基础研究');
+    // 内部口径仍供 B 区域筛选与成本过滤使用，未被覆盖
+    expect(rows[0].projectType).toBe('自筹项目');
+  });
+
+  test('台账缺「项目类型」列时透传字段回退为空串', () => {
+    const { rows } = calculateCostAnalysis(
+      [makeProject({ '项目类型': '' })],
+      [],
+      { dateRange: DATE_RANGE }
+    );
+
+    expect(rows[0].projectTypeLabel).toBe('');
+  });
 });
 
 describe('calculateCostAnalysis > 成本计算', () => {
@@ -303,7 +327,7 @@ describe('buildCostExportTable', () => {
   test('缺省时导出表格全部列（含各成本分类与合计）', () => {
     const { headers } = buildCostExportTable(overBudgetRows());
     expect(headers).toEqual([
-      '项目编号', '项目名称', '项目经理', '业务部所', '计划终验时间',
+      '项目编号', '项目名称', '项目经理', '业务部所', '项目类型', '计划终验时间',
       '项目分包费-立项成本', '项目分包费-实际支出', '项目分包费-差额',
       '软硬件采购-立项成本', '软硬件采购-实际支出', '软硬件采购-差额',
       '立项成本合计', '实际支出合计', '差额合计', '超支成本类型', '是否超支',
@@ -330,6 +354,8 @@ describe('buildCostExportTable', () => {
     expect(data).toHaveLength(1);
     expect(data[0]).toHaveLength(headers.length);
     expect(data[0][0]).toBe('PRJ-001');
+    // 导出台账原值，与表格展示同口径（内部经营 / 自筹口径不参与展示与导出）
+    expect(data[0][headers.indexOf('项目类型')]).toBe('研究咨询类');
     expect(data[0][headers.indexOf('项目分包费-立项成本')]).toBe(1000000);
     expect(data[0][headers.indexOf('项目分包费-实际支出')]).toBe(1200000);
     expect(data[0][headers.indexOf('项目分包费-差额')]).toBe(200000);

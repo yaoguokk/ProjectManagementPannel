@@ -120,7 +120,10 @@ const buildCostRow = (project, contractMap, contractDetailMap = new Map()) => {
     projectName: project.projectName,
     manager: project.manager,
     department: project.department,
+    // 内部口径（经营项目 / 自筹项目）：仅供 B 区域筛选与成本过滤使用，不参与展示
     projectType: project.projectType,
+    // 台账原始「项目类型」列（研究咨询类 / 产品销售类 等）：E 区域展示、表头筛选与导出统一取此值
+    projectTypeLabel: project['项目类型'] || '',
     planFinalDate: project.planFinalDate,
     actualFinalDate: project.actualFinalDate,
     categories,
@@ -203,6 +206,8 @@ const FIXED_EXPORT_COLUMNS = {
   '项目名称': { header: '项目名称', get: (row) => row.projectName },
   '项目经理': { header: '项目经理', get: (row) => row.manager },
   '业务部所': { header: '业务部所', get: (row, options) => formatDepartment(row.department, options.departmentMode) },
+  // 与表格展示同口径：导出台账原始「项目类型」，缺失时与单元格一致显示 '-'
+  '项目类型': { header: '项目类型', get: (row) => row.projectTypeLabel || '-' },
   '计划终验时间': { header: '计划终验时间', get: (row) => row.planFinalDate },
   '立项合计': { header: '立项成本合计', get: (row) => row.budgetTotal },
   '实际合计': { header: '实际支出合计', get: (row) => row.actualTotal },

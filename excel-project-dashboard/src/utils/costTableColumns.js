@@ -8,8 +8,12 @@
  * 便于单测覆盖且让表格结构与其可见列解耦。
  *
  * 列宽也随列定义一起给出，供表格的列宽拖拽取默认值。
+ *
+ * 表头筛选与排序同样由列定义驱动：每列声明 `filter`（筛选类型）与 `getFilterValue`（取值函数），
+ * 下拉的计数/占比、数值条件、排序都复用同一个取值口径，保证"看到的即筛到的"。
  */
 import { formatDepartment } from './departmentDisplay';
+import { ColumnFilterKind } from './columnFilters';
 
 /** 金额格式化：整数千分位 */
 export const formatAmount = (value) =>
@@ -29,30 +33,55 @@ export const FALLBACK_COLUMN_WIDTH = 120;
 
 /** 分类列之前的固定列 */
 const HEAD_COLUMNS = [
-  { key: 'code', label: '项目编号', width: 160 },
-  { key: 'name', label: '项目名称', width: 300 },
-  { key: 'manager', label: '项目经理', width: 100 },
-  { key: 'department', label: '业务部所', width: 220 },
-  { key: 'planFinalDate', label: '计划终验时间', width: 140 },
+  { key: 'code', label: '项目编号', width: 160, filter: ColumnFilterKind.VALUE, getFilterValue: (row) => row.projectCode },
+  { key: 'name', label: '项目名称', width: 300, filter: ColumnFilterKind.VALUE, getFilterValue: (row) => row.projectName },
+  { key: 'manager', label: '项目经理', width: 100, filter: ColumnFilterKind.VALUE, getFilterValue: (row) => row.manager },
+  // 筛选取台账原值（与搜索口径一致）；「业务部所」展示方式只影响单元格文本
+  { key: 'department', label: '业务部所', width: 220, filter: ColumnFilterKind.VALUE, getFilterValue: (row) => row.department },
+  // 项目类型：与 D 区域同名列同序，展示、表头筛选与导出都取台账原值（研究咨询类 / 产品销售类 等）；
+  // 经营 / 自筹的内部口径只用于 B 区域顶部筛选，不在此展示
+  { key: 'projectType', label: '项目类型', width: 100, filter: ColumnFilterKind.VALUE, getFilterValue: (row) => row.projectTypeLabel },
+  { key: 'planFinalDate', label: '计划终验时间', width: 140, filter: ColumnFilterKind.VALUE, getFilterValue: (row) => row.planFinalDate },
 ];
 
 /** 分类列之后的固定列 */
 const TAIL_COLUMNS = [
-  { key: 'budgetTotal', label: '立项合计', align: 'right', width: 120 },
-  { key: 'actualTotal', label: '实际合计', align: 'right', width: 120 },
-  { key: 'diffTotal', label: '差额合计', align: 'right', width: 120 },
-  { key: 'overCategories', label: '超支成本类型', width: 160 },
-  { key: 'status', label: '状态', width: 100 },
-  { key: 'action', label: '操作', width: 90 },
+  { key: 'budgetTotal', label: '立项合计', align: 'right', width: 120, filter: ColumnFilterKind.NUMBER, getFilterValue: (row) => row.budgetTotal ?? 0 },
+  { key: 'actualTotal', label: '实际合计', align: 'right', width: 120, filter: ColumnFilterKind.NUMBER, getFilterValue: (row) => row.actualTotal ?? 0 },
+  { key: 'diffTotal', label: '差额合计', align: 'right', width: 120, filter: ColumnFilterKind.NUMBER, getFilterValue: (row) => row.diffTotal ?? 0 },
+  {
+    key: 'overCategories',
+    label: '超支成本类型',
+    width: 160,
+    filter: ColumnFilterKind.VALUE,
+    getFilterValue: (row) => (row.overCategories || []).join('、'),
+  },
+  // 筛选取值与单元格展示一致（超支 / 正常），避免"看到超支却筛不出来"
+  { key: 'status', label: '状态', width: 100, filter: ColumnFilterKind.VALUE, getFilterValue: (row) => (row.hasOverBudget ? '超支' : '正常') },
+  { key: 'action', label: '操作', width: 90, filter: ColumnFilterKind.NONE },
 ];
+
+/** 取某行指定分类的数据，缺失时回退为零值，避免空分类导致渲染报错 */
+const getCategoryItem = (row, categoryKey) =>
+  (row.categories || []).find((item) => item.key === categoryKey)
+  || { budget: 0, actual: 0, diff: 0, over: false };
+
+/** 分类列三段的展示后缀 */
+const KIND_LABELS = { budget: '立项', actual: '实际', diff: '差额' };
 
 /** 每个成本分类展开为「立项 / 实际 / 差额」三列 */
 const buildCategoryColumns = (categories = []) =>
-  categories.flatMap((item) => [
-    { key: `${item.key}-budget`, label: `${item.label}-立项`, kind: 'budget', categoryKey: item.key, align: 'right', width: CATEGORY_COLUMN_WIDTH },
-    { key: `${item.key}-actual`, label: `${item.label}-实际`, kind: 'actual', categoryKey: item.key, align: 'right', width: CATEGORY_COLUMN_WIDTH },
-    { key: `${item.key}-diff`, label: `${item.label}-差额`, kind: 'diff', categoryKey: item.key, align: 'right', width: CATEGORY_COLUMN_WIDTH },
-  ]);
+  categories.flatMap((item) => ['budget', 'actual', 'diff'].map((kind) => ({
+    key: `${item.key}-${kind}`,
+    label: `${item.label}-${KIND_LABELS[kind]}`,
+    kind,
+    categoryKey: item.key,
+    align: 'right',
+    width: CATEGORY_COLUMN_WIDTH,
+    filter: ColumnFilterKind.NUMBER,
+    // 与单元格口径一致：缺失分类按 0 处理，否则筛「等于 0」会漏掉这些行
+    getFilterValue: (row) => getCategoryItem(row, item.key)[kind] ?? 0,
+  })));
 
 /**
  * 生成完整列定义
@@ -63,11 +92,6 @@ export const buildCostColumns = (rows = []) => [
   ...buildCategoryColumns(rows[0]?.categories),
   ...TAIL_COLUMNS,
 ];
-
-/** 取某行指定分类的数据，缺失时回退为零值，避免空分类导致渲染报错 */
-const getCategoryItem = (row, categoryKey) =>
-  (row.categories || []).find((item) => item.key === categoryKey)
-  || { budget: 0, actual: 0, diff: 0, over: false };
 
 /** 固定列中需要「超支标红」的列 */
 const OVER_STYLE = 'text-right font-semibold text-red-600';
@@ -118,6 +142,9 @@ export const buildCostCell = (row, col, options = {}) => {
         text: formatDepartment(row.department, options.departmentMode),
         cellClass: 'text-gray-600',
       };
+    case 'projectType':
+      // 台账原值口径，与表头筛选、导出保持一致（不走内部 projectType 的 经营 / 自筹）
+      return { key: col.key, text: row.projectTypeLabel || '-', cellClass: 'text-gray-600' };
     case 'planFinalDate':
       return { key: col.key, text: row.planFinalDate || '-', cellClass: 'text-gray-600' };
     case 'budgetTotal':

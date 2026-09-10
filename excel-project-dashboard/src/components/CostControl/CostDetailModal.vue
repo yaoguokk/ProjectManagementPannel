@@ -214,7 +214,8 @@ const projectInfos = computed(() => {
   return [
     { label: '项目经理', value: row.manager || '-' },
     { label: '业务部所', value: row.department || '-' },
-    { label: '项目类型', value: row.projectType || '-' },
+    // 与表格列同口径：展示台账原始「项目类型」（经营 / 自筹仅体现在 B 区域顶部筛选）
+    { label: '项目类型', value: row.projectTypeLabel || '-' },
     { label: '计划终验时间', value: row.planFinalDate || '-' },
     { label: '实际终验时间', value: row.actualFinalDate || '-' },
   ];

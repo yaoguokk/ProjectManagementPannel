@@ -20,12 +20,43 @@
           :class="col.align === 'right' ? 'text-right' : 'text-center'"
           :style="widthStyle(col.key)"
         >
-          {{ col.label }}
+          <span class="inline-flex items-center gap-1">
+            <span>{{ col.label }}</span>
+            <!-- 排序标识：与下拉里的升序/降序共用同一状态 -->
+            <span v-if="sortMark(col)" class="text-blue-500">{{ sortMark(col) }}</span>
+            <!-- 表头筛选入口：Excel 风格漏斗图标，有筛选时高亮 -->
+            <button
+              v-if="isFilterable(col)"
+              type="button"
+              class="filter-trigger inline-flex h-4 w-4 items-center justify-center rounded transition-colors"
+              :class="hasFilter(col.key) ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'"
+              :title="`筛选「${col.label}」`"
+              @click.stop="handleToggleFilter($event, col.key)"
+            >
+              <svg viewBox="0 0 20 20" fill="currentColor" class="h-3 w-3">
+                <path fill-rule="evenodd" d="M3 4.75A.75.75 0 0 1 3.75 4h12.5a.75.75 0 0 1 .53 1.28l-4.53 4.53v3.94a.75.75 0 0 1-.33.62l-2.5 1.79A.75.75 0 0 1 8 15.54v-5.73L3.22 5.03A.75.75 0 0 1 3 4.75Z" clip-rule="evenodd" />
+              </svg>
+            </button>
+          </span>
           <!-- resize-handle 仅作标识，样式由 Tailwind 类提供 -->
           <span
             class="resize-handle absolute inset-y-0 right-0 z-10 w-1.5 cursor-col-resize bg-transparent transition-colors hover:bg-blue-500"
             @mousedown.prevent="startResize($event, col.key)"
           ></span>
+
+          <!-- 筛选下拉：fixed 定位在表头下方，避免被表格容器的 overflow 裁切 -->
+          <ColumnFilterDropdown
+            v-if="openFilterKey === col.key"
+            :column="col"
+            :options="filterOptions"
+            :total="filterTotal"
+            :filter="filters[col.key]"
+            :sort-order="sort.key === col.key ? sort.order : ''"
+            :anchor="anchorRect"
+            @update:filter="$emit('update:filter', col.key, $event)"
+            @update:sort="$emit('update:sort', col.key, $event)"
+            @close="$emit('close-filter')"
+          />
         </th>
       </tr>
     </thead>
@@ -74,9 +105,11 @@
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { ref, computed } from 'vue';
 import { useColumnResize } from '../../composables/useColumnResize';
 import { FALLBACK_COLUMN_WIDTH } from '../../utils/costTableColumns';
+import { ColumnFilterKind, SortOrder, isColumnFilterActive } from '../../utils/columnFilters';
+import ColumnFilterDropdown from '../common/ColumnFilterDropdown.vue';
 
 const props = defineProps({
   // 可见列定义（含 key / label / align / width）
@@ -94,9 +127,52 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  // 各列筛选状态 { [col.key]: { values, operator, number, number2 } }
+  filters: {
+    type: Object,
+    default: () => ({}),
+  },
+  // 当前排序 { key, order }
+  sort: {
+    type: Object,
+    default: () => ({ key: '', order: '' }),
+  },
+  // 展开的下拉所属列 key（由父组件持有，保证同时只开一个）
+  openFilterKey: {
+    type: String,
+    default: '',
+  },
+  // 展开列的值列表选项（父组件按"其他列筛选之后"的数据统计）
+  filterOptions: {
+    type: Array,
+    default: () => [],
+  },
+  // 展开列的统计基数
+  filterTotal: {
+    type: Number,
+    default: 0,
+  },
 });
 
-defineEmits(['open-detail']);
+const emit = defineEmits(['open-detail', 'toggle-filter', 'close-filter', 'update:filter', 'update:sort']);
+
+// 下拉锚点：打开时记录触发按钮的视口坐标，供 fixed 定位
+const anchorRect = ref(null);
+
+const isFilterable = (col) => col.filter !== ColumnFilterKind.NONE;
+const hasFilter = (key) => isColumnFilterActive(props.filters?.[key]);
+const sortMark = (col) => {
+  if (props.sort?.key !== col.key) return '';
+  if (props.sort.order === SortOrder.ASC) return '↑';
+  if (props.sort.order === SortOrder.DESC) return '↓';
+  return '';
+};
+
+const handleToggleFilter = (event, key) => {
+  // 收起时不重算锚点，交给父组件决定开关
+  anchorRect.value = props.openFilterKey === key ? null : event.currentTarget.getBoundingClientRect();
+  emit('toggle-filter', key);
+};
 
 const columnKeys = computed(() => props.columns.map((col) => col.key));
 

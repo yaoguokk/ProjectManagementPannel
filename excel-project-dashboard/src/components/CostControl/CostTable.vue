@@ -16,6 +16,16 @@
         >
           {{ option.label }}
         </button>
+
+        <!-- 表头筛选（Excel 风格）：有生效筛选时才出现，避免工具栏长期挂着无用按钮 -->
+        <button
+          v-if="activeFilterCount > 0"
+          class="h-8 rounded border border-blue-300 bg-blue-50 px-3 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-100"
+          title="清除所有表头筛选与排序"
+          @click="clearHeaderFilters"
+        >
+          清除表头筛选（{{ activeFilterCount }}）
+        </button>
       </div>
       <div class="flex flex-wrap items-center justify-end gap-2">
         <!-- 列设置（公共组件） -->
@@ -80,7 +90,16 @@
             :columns="visibleColumns"
             :rows="displayRows"
             :is-empty="filteredRows.length === 0"
+            :filters="columnFilters"
+            :sort="sortState"
+            :open-filter-key="openFilterKey"
+            :filter-options="openFilterOptions"
+            :filter-total="openFilterSourceRows.length"
             @open-detail="openDetail"
+            @toggle-filter="toggleFilterKey"
+            @close-filter="closeFilter"
+            @update:filter="setColumnFilter"
+            @update:sort="setColumnSort"
           />
         </div>
       </div>
@@ -147,6 +166,12 @@ import TableSearchBox from '../common/TableSearchBox.vue';
 import { filterBySearchQuery } from '../../utils/tableSearch';
 import { buildCostColumns, buildCostCell } from '../../utils/costTableColumns';
 import { DepartmentDisplay, DEPARTMENT_DISPLAY_OPTIONS } from '../../utils/departmentDisplay';
+import {
+  buildValueOptions,
+  countActiveColumnFilters,
+  filterRowsByColumnFilters,
+  sortRowsByColumn,
+} from '../../utils/columnFilters';
 
 const props = defineProps({
   // calculateCostAnalysis 的 rows 结果
@@ -215,6 +240,8 @@ const getGlobalSearchValues = (row) => [
   row.projectName,
   row.manager,
   row.department,
+  // 展示列为台账原始「项目类型」，搜索口径需与之一致；同时保留内部口径，输入「经营 / 自筹」仍可命中
+  row.projectTypeLabel,
   row.projectType,
   row.planFinalDate,
   row.actualFinalDate,
@@ -223,7 +250,8 @@ const getGlobalSearchValues = (row) => [
   ...row.categories.map((item) => item.label),
 ];
 
-const filteredRows = computed(() =>
+// 表头筛选只作用于「已通过超支筛选与关键词搜索」的数据
+const searchedRows = computed(() =>
   filterBySearchQuery(filterCostRows(props.rows, overFilter.value), {
     query: searchQuery.value,
     mode: searchMode.value,
@@ -232,6 +260,44 @@ const filteredRows = computed(() =>
     getGlobalValues: getGlobalSearchValues,
   })
 );
+
+// 表头筛选状态：按列 key 存放，未启用时该列不存在
+const columnFilters = ref({});
+// 排序状态：{ key, order }，order 为空表示未排序
+const sortState = ref({ key: '', order: '' });
+// 当前展开的筛选下拉（同时只开一个）
+const openFilterKey = ref('');
+
+const activeFilterCount = computed(() => countActiveColumnFilters(columnFilters.value));
+
+const openFilterColumn = computed(() =>
+  allColumns.value.find((col) => col.key === openFilterKey.value) || null);
+
+// 下拉里的计数/占比以「其他列筛选之后」的数据为基数（Excel 语义），
+// 且必须排除自身列，否则勾掉一个值后就再也勾不回来。
+const openFilterSourceRows = computed(() =>
+  filterRowsByColumnFilters(
+    searchedRows.value,
+    columnFilters.value,
+    allColumns.value,
+    openFilterKey.value
+  )
+);
+
+const openFilterOptions = computed(() => (openFilterColumn.value
+  ? buildValueOptions(openFilterSourceRows.value, openFilterColumn.value)
+  : []));
+
+// 筛选（跨列 AND）→ 排序；分页与导出的都是这条链路的结果
+const filteredRows = computed(() => {
+  const rows = filterRowsByColumnFilters(
+    searchedRows.value,
+    columnFilters.value,
+    allColumns.value
+  );
+  const sortColumn = allColumns.value.find((col) => col.key === sortState.value.key);
+  return sortRowsByColumn(rows, sortColumn, sortState.value.order);
+});
 
 const totalPages = computed(() =>
   Math.max(1, Math.ceil(filteredRows.value.length / pageSize.value))
@@ -254,6 +320,43 @@ const setOverFilter = (value) => {
 const handleSearch = () => {
   currentPage.value = 1;
 };
+
+/**
+ * 写入某列筛选
+ *
+ * 即使条件暂时不生效（如数值框里还是半截内容）也照样存下来：
+ * 一旦删掉，面板会收到 filter=undefined 并把用户正在输入的字符清空。
+ * "是否生效"统一由 isColumnFilterActive 判断，与存储解耦。
+ */
+const setColumnFilter = (key, filter) => {
+  columnFilters.value = { ...columnFilters.value, [key]: filter };
+  currentPage.value = 1;
+};
+
+const setColumnSort = (key, order) => {
+  sortState.value = order ? { key, order } : { key: '', order: '' };
+  currentPage.value = 1;
+};
+
+const toggleFilterKey = (key) => {
+  openFilterKey.value = openFilterKey.value === key ? '' : key;
+};
+
+const closeFilter = () => {
+  openFilterKey.value = '';
+};
+
+const clearHeaderFilters = () => {
+  columnFilters.value = {};
+  sortState.value = { key: '', order: '' };
+  closeFilter();
+  currentPage.value = 1;
+};
+
+// 数据换了（重新上传台账）：旧筛选引用的取值可能已不存在，会让表格看起来"空了"，直接重置
+watch(() => props.rows, () => {
+  clearHeaderFilters();
+});
 
 // 行 × 可见列的单元格模型，使表格渲染与可见列解耦
 const displayRows = computed(() =>
