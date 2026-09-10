@@ -5,6 +5,7 @@
       ref="fileInput"
       @change="handleFileChange"
       accept=".xlsx,.xls"
+      multiple
       class="file-input"
     />
 
@@ -18,7 +19,7 @@
       <div class="upload-text">
         <h3 class="upload-title">{{ title }}</h3>
         <p class="upload-subtitle">{{ description }}</p>
-        <p class="upload-hint">请上传文件名含"{{ ACCEPT_CONFIG[acceptType].keyword }}"的Excel文件</p>
+        <p class="upload-hint">可一次选择 1-3 个文件，系统按文件名自动分发：{{ KEYWORD_HINT_TEXT }}</p>
       </div>
 
       <button class="upload-btn">
@@ -73,7 +74,27 @@
     <!-- 数据清洗规则说明 -->
     <div class="cleaning-rules">
       <h4 class="rules-title">数据清洗规则</h4>
-      <ul class="rules-list">
+      <!-- 支出合同事项：只做字段映射与空值过滤 -->
+      <ul v-if="acceptType === 'contract'" class="rules-list">
+        <li class="rule-item">
+          <span class="rule-icon">✓</span>
+          跳过首行标题，仅保留「项目编号 / 支出合同类型 / 事项金额(元)」
+        </li>
+        <li class="rule-item">
+          <span class="rule-icon">✓</span>
+          丢弃「项目编号」为空的行
+        </li>
+        <li class="rule-item">
+          <span class="rule-icon">✓</span>
+          清洗金额字段（去除¥、$、逗号等符号）
+        </li>
+        <li class="rule-item">
+          <span class="rule-icon">✓</span>
+          仅统计「项目分包」「软硬件」两类支出，其余类型忽略
+        </li>
+      </ul>
+      <!-- 台账：状态过滤 + 列映射 -->
+      <ul v-else class="rules-list">
         <li v-if="acceptType === 'business'" class="rule-item">
           <span class="rule-icon">✓</span>
           排除"立项方式"为"基于商机立项"的行
@@ -107,7 +128,7 @@
 import { ref } from 'vue';
 import { useToast } from '../../composables/useToast';
 import { parseExcelFile } from '../../utils/excelParser';
-import { cleanExcelData, cleanSelfFundedData } from '../../utils/dataCleaner';
+import { ACCEPT_CONFIG, KEYWORD_HINT_TEXT, routeUploadFiles } from '../../utils/uploadRouting';
 
 const props = defineProps({
   // 'business' | 'self-funded'
@@ -135,31 +156,19 @@ const uploadedFiles = ref([]);
 
 const { showToast } = useToast();
 
-const ACCEPT_CONFIG = {
-  'business': {
-    keyword: '经营项目台账明细列表',
-    skipRows: 0,
-    cleaner: cleanExcelData,
-    label: '经营项目'
-  },
-  'self-funded': {
-    keyword: '自筹项目台账列表',
-    skipRows: 1,
-    cleaner: cleanSelfFundedData,
-    label: '自筹项目'
-  }
-};
+// 文件 id 生成序号：同一次批量选择会在同一毫秒内处理，需要保证 id 唯一
+let fileSeq = 0;
 
 // 触发文件选择
 const triggerFileInput = () => {
   fileInput.value.click();
 };
 
-// 处理文件选择
+// 处理文件选择：支持一次多选（1-3 个），按文件名自动分发到对应数据入口
 const handleFileChange = (event) => {
-  const files = event.target.files;
+  const files = Array.from(event.target.files || []);
   if (files.length > 0) {
-    handleFile(files[0]);
+    handleFiles(files);
   }
   // 清空 input，允许重复选择同一文件
   event.target.value = '';
@@ -176,39 +185,54 @@ const handleDragLeave = () => {
 
 const handleDrop = (event) => {
   isDragOver.value = false;
-  const files = event.dataTransfer.files;
-  if (files.length > 0) {
-    // 检查文件类型
-    const file = files[0];
-    const validTypes = [
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'application/vnd.ms-excel',
-      'application/vnd.ms-excel.sheet.binary.macroEnabled.12'
-    ];
+  const files = Array.from(event.dataTransfer.files || []);
+  if (files.length === 0) return;
 
-    if (!validTypes.includes(file.type) && !file.name.match(/\.(xlsx|xls)$/i)) {
-      showToast('请上传 Excel 文件（.xlsx 或 .xls）', 'error');
-      return;
+  // 检查文件类型（任一非 Excel 即整批拒绝）
+  const validTypes = [
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-excel',
+    'application/vnd.ms-excel.sheet.binary.macroEnabled.12'
+  ];
+  const invalid = files.find(
+    (file) => !validTypes.includes(file.type) && !file.name.match(/\.(xlsx|xls)$/i)
+  );
+  if (invalid) {
+    showToast(`上传文件有误：「${invalid.name}」不是 Excel 文件（.xlsx 或 .xls）`, 'error');
+    return;
+  }
+
+  handleFiles(files);
+};
+
+/**
+ * 批量处理一次选择的文件：先整批校验路由（任一文件有问题则整批拒绝，不解析任何文件），
+ * 校验通过后按选择顺序串行解析，避免并发触发多个进度条互相干扰
+ */
+const handleFiles = async (files) => {
+  const { routes, errors, ok } = routeUploadFiles(files.map((file) => file.name));
+  if (!ok) {
+    // 前缀写进 error 消息本身：file-error 冒泡到父组件后还会再弹一次 toast，
+    // 只有消息自带前缀才能保证用户看到的是「上传文件有误：…」
+    const message = `上传文件有误：${errors.join('；')}`;
+    showToast(message, 'error');
+    emit('file-error', new Error(message));
+    return;
+  }
+
+  for (const { fileName, acceptType } of routes) {
+    const file = files.find((item) => item.name === fileName);
+    if (file) {
+      await handleFile(file, acceptType);
     }
-
-    handleFile(file);
   }
 };
 
-// 校验文件名是否匹配当前上传区域
-const validateFileName = (fileName) => {
-  const config = ACCEPT_CONFIG[props.acceptType];
-  if (!fileName.includes(config.keyword)) {
-    const otherType = props.acceptType === 'business' ? '自筹项目' : '经营项目';
-    throw new Error(`文件名不匹配！${config.label}请上传含"${config.keyword}"的文件，当前文件名不含此关键词。如果是${otherType}表格，请上传到${otherType}区域`);
-  }
-};
-
-// 处理文件上传
-const handleFile = async (file) => {
-  const config = ACCEPT_CONFIG[props.acceptType];
+// 处理单个文件上传（acceptType 由文件名路由决定，与点击的是哪个入口无关）
+const handleFile = async (file, acceptType) => {
+  const config = ACCEPT_CONFIG[acceptType];
   let progressInterval = null;
-  const fileId = Date.now().toString();
+  const fileId = `f${Date.now()}-${fileSeq++}`;
   const fileObj = {
     id: fileId,
     name: file.name,
@@ -221,9 +245,6 @@ const handleFile = async (file) => {
   try {
     isUploading.value = true;
     uploadProgress.value = 0;
-
-    // 校验文件名
-    validateFileName(file.name);
 
     // 模拟进度
     progressInterval = setInterval(() => {
@@ -254,7 +275,8 @@ const handleFile = async (file) => {
       data: cleanedData,
       rawData: result.rawData,
       fileName: file.name,
-      acceptType: props.acceptType
+      // 上传入口只负责发起，真实类型由文件名路由决定，父组件按此分发数据
+      acceptType
     });
 
     showToast(`${file.name} 解析成功，共 ${cleanedData.length} 条有效数据`, 'success');

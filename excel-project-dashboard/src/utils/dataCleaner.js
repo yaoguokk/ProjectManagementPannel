@@ -173,3 +173,38 @@ export const cleanString = (value) => {
 export const generateId = () => {
   return 'id_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 };
+
+/**
+ * 清洗支出合同事项 Excel 数据
+ * 该表首行是标题（解析阶段已跳过）。
+ * 除成本聚合所需的 3 个字段外，额外保留合同明细字段，供「超支详情弹窗」下钻展示。
+ * 项目编号为空的行无法参与成本匹配，直接丢弃
+ * @param {Array} rawData - 原始数据数组
+ * @returns {Array} 合同明细数组
+ */
+export const cleanContractData = (rawData) => {
+  if (!rawData || rawData.length === 0) return [];
+
+  return rawData
+    .map((row, index) => ({
+      // 明细唯一键：合同ID + 事项ID，缺失时用行号兜底
+      id:
+        [cleanString(row['合同ID']), cleanString(row['事项ID'])].filter(Boolean).join('-') ||
+        `CONTRACT-${index + 1}`,
+      // —— 成本聚合字段 ——
+      projectCode: cleanString(row['项目编号']),
+      contractType: cleanString(row['支出合同类型']),
+      amount: cleanNumber(row['事项金额(元)']),
+      // —— 详情展示字段 ——
+      contractNo: cleanString(row['数研院合同编号']),
+      contractName: cleanString(row['合同名称']),
+      signDate: formatDate(row['合同签订时间']),
+      itemName: cleanString(row['事项名称']),
+      contractAmount: cleanNumber(row['合同总金额元']),
+      supplier: cleanString(row['乙方合同签约单位']),
+      handler: cleanString(row['承办人']) || cleanString(row['事项承办人']),
+      purchaseType: cleanString(row['采购类型']),
+      contractStatus: cleanString(row['合同状态']),
+    }))
+    .filter((item) => item.projectCode !== '');
+};

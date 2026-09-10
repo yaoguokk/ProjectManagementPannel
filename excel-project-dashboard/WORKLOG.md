@@ -1,5 +1,154 @@
 # WORKLOG — 唯一任务账本
 
+---
+
+## [2026-09-10] A 区域批量上传：任一入口一次选 1-3 个文件，按文件名自动分发
+
+**总目标**：点任意一个「选择文件」按钮都能一次选择 1-3 个 Excel，系统按文件名关键词自动分发到经营 / 自筹 / 支出合同三个数据入口；出现 2 份同类型台账或无关文件时，提示「上传文件有误」并整批拒绝。
+
+**状态**：✅ 完成
+
+**干到哪了**：
+- [x] 新增 `src/utils/uploadRouting.js`：三类台账的识别关键词与解析配置（`ACCEPT_CONFIG`，从 UploadArea 迁出）+ 纯函数 `matchAcceptType` / `routeUploadFiles` / `KEYWORD_HINT_TEXT` / `MAX_UPLOAD_FILES`。
+- [x] `routeUploadFiles` 校验规则：每个文件必须命中恰好一个关键词；同类型最多 1 份；一次最多 3 个；错误原因逐条返回。
+- [x] `UploadArea.vue`：文件输入加 `multiple`，点击选择与拖拽都改走批量入口 `handleFiles`——先整批校验（任一文件有问题则整批拒绝，不解析任何文件），通过后按选择顺序串行解析；`file-uploaded` 事件携带**文件自身路由出的类型**，父组件无需感知文件来自哪个卡片。
+- [x] 「上传文件有误：…」前缀写进 `file-error` 的 error 消息本身——该事件冒泡到 Dashboard 后还会再弹一次 toast 并覆盖前一条，只有消息自带前缀才能保证用户看到的最终提示正确。
+- [x] 文件 id 改为 `Date.now()+序号`：同一次批量选择在同一毫秒内处理，旧的纯时间戳 id 会撞车导致状态更新错位。
+- [x] 删除旧的 `validateFileName`（"文件请上传到 XX 区域"的引导已不适用，入口不再限制类型）；三个上传卡片的 description 统一为「任一入口均可一次选择 1-3 个文件，按文件名自动分发」。
+- [x] 新增常驻单测 `tests/uploadRouting.test.js`（12 项：识别/路由/重复拒绝/无关文件/超限/空选择）与 `tests/uploadArea.test.js`（4 项组件测试：multiple 属性、三类文件按真实类型分发、两份自筹整批拒绝且不解析、混入无关文件整批拒绝）。
+- [x] README 补充「批量上传与自动分发」说明。
+
+**验证证据**：
+- `npm run test:run`：131/131 通过（11 个测试文件，较上一轮 115 项新增 16 项）。
+- `npm run build`：构建通过。
+- 产物校验：交付 HTML 中 `multiple` 属性已编译进 input（`multiple:""`），「上传文件有误」「一次最多选择」「无法识别文件」等消息文案均在。
+- 已用新构建覆盖导出文件 `项目全景面板_20260910.html`；本地 dev server 返回 200。
+
+**边界**：
+- 批量校验是原子的：合法文件与问题文件混选时，合法文件也不会被处理，需要去掉问题文件后重新选择（刻意为之，避免"半成功"状态）。
+- 同类型重复目前是"整批拒绝"而不是"后传覆盖前传"；如需"同名类型自动覆盖旧数据"，可在此基础上放开。
+- 文件状态列表显示在发起选择的卡片下（含被分发到其他入口的文件），跨卡片不重复展示。
+
+---
+
+## [2026-09-10] E 区域表格区通铺视口宽度（对齐 D 区域）
+
+**总目标**：D 区域明细表格会突破 1400px 内容宽度、随窗口宽度变化；让 E 区域成本明细表采用同一套布局，不再被压在窄卡片里。
+
+**状态**：✅ 完成
+
+**干到哪了**：
+- [x] `CostTable.vue` 由「一个大卡片」拆成三段：工具栏、表格区、分页。
+- [x] 工具栏与分页各自 `mx-auto max-w-[1400px] rounded-lg bg-white shadow-sm`，保持与 A/B/C 区域左右对齐。
+- [x] 表格区外层用 `ml-[calc(50%_-_50vw)] w-screen border-y border-gray-200 bg-white` 突破 `main-container` 的 `max-width: 1400px`，与 D 区域 `.table-breakout` 是同一实现；内层 `p-6` 对应 D 区域 `.table-section` 的 `padding: 1.5rem`。
+- [x] 最外层容器改为 `overflow-visible`，避免负边距被裁切。
+- [x] 列宽拖拽、业务部所切换、导出、下钻等逻辑均未改动，`tableContainerRef` 仍指向表格横向滚动容器。
+- [x] 新增常驻单测 `tests/costTableLayout.test.js`（4 项）：锁住「表格必须位于 1400px 约束容器之外」这一结构不变量、工具栏 → 表格 → 分页的文档顺序、以及通铺后每列表头仍带拖拽手柄。
+- [x] README（`excel-project-dashboard/README.md`）补充表格通铺布局说明。
+
+**验证证据**：
+- `npm run test:run`：115/115 通过（9 个测试文件，较上一轮 111 项新增 4 项）。
+- `npm run build`：构建通过。
+- 产物校验：`dist/index.html` 中 `calc(50% - 50vw)` 出现 2 次、`100vw` 出现 2 次（D/E 各一），确认 Tailwind 任意值 `ml-[calc(50%_-_50vw)]` / `w-screen` 已正确编译。
+- 已用新构建覆盖导出文件 `项目全景面板_20260910.html`；本地 dev server（http://127.0.0.1:5173/）返回 200。
+
+**边界**：
+- `100vw` 包含滚动条宽度，窄窗口下页面可能出现约 15px 的横向滚动条；D 区域原本就是这个行为，本次刻意保持一致，未单独修正。
+- 只改 E 区域布局，D 区域代码未动，避免回归风险。
+- 本机没有浏览器二进制，未做截图比对；表格实际视觉宽度需人工在不同窗口宽度下确认。
+- `CostTable.vue` 现 301 行（规范 ≤200）；已确认本次不再拆分工具栏/分页，留待后续按需处理。
+
+---
+
+## [2026-09-10] D/E 区域表格列宽可调 + E 区域业务部所展示方式切换
+
+**总目标**：参考 D 区域，让 E 区域成本明细表也能拖动调整列宽；并新增「业务部所」展示口径切换，让自筹项目的 `公司/公司/部门` 可只显示部门名。
+
+**状态**：✅ 完成
+
+**干到哪了**：
+- [x] 新增 `src/composables/useColumnResize.js`：把 D 区域原有的列宽拖拽逻辑（mousedown 记起点 → document 上 mousemove 改宽 → mouseup 收尾、最小宽度 60px、新列自动补默认宽度、卸载时移除监听）抽为组合式函数，默认宽度由调用方通过 `resolveDefaultWidth` 提供。
+- [x] D 区域（`ProjectTable.vue`）改用 `useColumnResize`，删除内部约 50 行重复实现，行为保持不变。
+- [x] 新增 `src/components/CostControl/CostTableGrid.vue`：E 区域的表头/表体渲染与列宽拖拽独立成组件，`table-fixed` + `colgroup` 让列宽严格生效，单元格统一 `truncate` + `title` 截断可悬浮查看。
+- [x] `CostTable.vue` 瘦身：表格渲染移交 `CostTableGrid`，只保留数据、筛选、导出等状态。
+- [x] `costTableColumns.js` 列定义自带 `width`（固定列按内容长度、动态分类列统一 110px），并导出 `FALLBACK_COLUMN_WIDTH`。
+- [x] 新增 `src/utils/departmentDisplay.js`：`DepartmentDisplay` / `DEPARTMENT_DISPLAY_OPTIONS` / `formatDepartment`，「仅部门」按 `/`（兼容全角 `／`）取最后一段，无分隔符或空值原样返回。
+- [x] E 区域搜索框旁新增「业务部所」下拉（全部展示 / 仅部门），默认全部展示即原有行为。
+- [x] `buildCostCell(row, col, options)` 支持 `departmentMode`；搜索取值口径保持台账原值不变。
+- [x] Excel 导出跟随展示方式：`buildCostExportTable(rows, columnLabels, options)` 把 options 透传给取值函数，「业务部所」按 `departmentMode` 输出。
+- [x] 新增常驻单测 `tests/departmentDisplay.test.js`（9 项）与 `tests/useColumnResize.test.js`（6 项）；`costTableColumns.test.js` 补 3 项、`costData.test.js` 补 1 项。
+- [x] README 补充列宽能力、业务部所展示口径与新增文件说明。
+
+**验证证据**：
+- `npm run test:run`：111/111 通过（8 个测试文件，较上一轮 92 项新增 19 项）。
+- `npm run build`：构建通过，产物 `dist/index.html` 生成成功。
+- 临时组件冒烟测试（`@vue/test-utils` + jsdom，验证后已删除）4/4 通过：
+  - E 区域：表头与每行单元格数量一致；拖动第 4 列手柄后 `colgroup` 宽度由 220px 变为 300px；切换「仅部门」后单元格文本由 `A公司/B公司/产品研发部` 变为 `产品研发部`。
+  - D 区域：拖动第 1 列手柄后 `colgroup` 宽度由 160px 变为 260px（列宽重构回归）。
+- 已用新构建覆盖导出文件 `项目全景面板_20260910.html`。
+- 本地 dev server（http://127.0.0.1:5173/）返回 200，应用正常加载。
+
+**边界**：
+- 列宽与「业务部所」展示方式仅存于组件内存，刷新页面回到默认（与列设置一致，未做持久化）。
+- 「业务部所」展示切换只做在 E 区域；D 区域自筹项目仍显示公司全称，需要时可直接复用 `departmentDisplay.js`。
+- 搜索始终匹配台账原值，因此切到「仅部门」后仍可用公司名搜到该项目（避免漏检）。
+- `CostTable.vue` 抽走表格栅格后仍有 289 行（规范 ≤200）；经确认本次不再拆分工具栏/分页，留待后续按需处理。
+- Playwright e2e 未执行：本机缺少浏览器二进制（未运行 `npx playwright install`），与本次改动无关。
+
+---
+
+## [2026-09-10] E 区域（成本管控）接入列设置与搜索，搜索能力抽为公共模块
+
+**总目标**：参考 D 区域，让 E 区域成本明细表也能配置展示列、也能按关键词搜索；把两处重复的搜索逻辑收敛为一份公共实现。
+
+**状态**：✅ 完成
+
+**干到哪了**：
+- [x] 新增 `src/utils/tableSearch.js`：抽出搜索语义（基础/全局范围、任意/全部匹配、多关键词分隔符、取值口径），导出 `SearchMode` / `SearchMatchMode` / `matchesSearchQuery` / `filterBySearchQuery` / `pickAllValues`。
+- [x] 新增 `src/components/common/TableSearchBox.vue`：搜索框 UI（范围下拉、匹配方式下拉、帮助 tooltip）连同原 `.search-box` 系列样式一起迁移，D/E 共用。
+- [x] `ColumnSelector.vue` 从 `components/ProjectTable/` 移到 `components/common/`，成为公共组件。
+- [x] D 区域（`ProjectTable.vue`）改用公共实现：删除内部 `normalizeSearchText` / `parseSearchTerms` 与内联搜索框模板及样式，行为保持不变。
+- [x] E 区域（`CostTable.vue`）工具栏新增列设置与搜索框；列改为数据驱动 + `selectedColumnLabels` 控制可见列，新增/隐藏分类列自动跟随。
+- [x] E 区域渲染改为 `displayRows`（行 × 可见列的单元格模型），表格结构与可见列解耦，避免取消再勾选后列序错乱。
+- [x] E 区域搜索取值口径：基础搜索=项目编号/名称/经理/部所；全局搜索=成本业务字段（含分类名、超支状态、超支类型）。
+- [x] 新增 `src/utils/costTableColumns.js`：把列模型（固定列 + 动态分类列）与单元格内容/样式构造从组件抽出，`CostTable.vue` 因此瘦身约 90 行，符合「逻辑与视图分离」规范。
+- [x] E 区域 Excel 导出跟随当前可见列（与 D 区域同语义）：`buildCostExportTable(rows, columnLabels)` 按列名映射表头与取值函数，缺省导出全部列；「操作」等非数据列不参与导出，金额列仍导出为数值。
+- [x] 新增常驻单测 `tests/tableSearch.test.js`（11 项）与 `tests/costTableColumns.test.js`（10 项）；同步调整 `tests/costData.test.js` 中导出用例（新增「按可见列导出」「非数据列不导出」）。
+- [x] README 补充 E 区域布局、公共组件与 `tableSearch.js` / `costTableColumns.js` 说明。
+
+**验证证据**：
+- `npm run test:run`：92/92 通过（6 个测试文件，含新增的 23 项）。
+- `npm run build`：构建通过，产物 `dist/index.html` 生成成功。
+- 临时组件冒烟测试（`@vue/test-utils` + jsdom，验证后已删除）：
+  - CostTable 4/4 通过——默认展示全部列且每行单元格数与表头一致；列设置取消「项目分包费-立项」后表头与单元格同步减少；基础搜索按项目名称命中；全局搜索命中「超支成本类型」。列模型抽出后复跑仍 4/4 通过。
+  - ProjectTable 2/2 通过——公共搜索框渲染且基础搜索可过滤；全局搜索 +「全部关键词（与）」需同时命中。
+- 已用新构建覆盖导出文件 `项目全景面板_20260910.html`。
+
+**边界**：
+- 列设置状态仅存于组件内存，刷新页面回到「全部列」，未做本地持久化。
+- E 区域列设置复用 D 区域的 `ColumnSelector`，二者状态互相独立，不联动。
+- 搜索匹配方式下拉沿用 D 区域原行为：仅在「全局搜索」下显示。
+- E 区域导出改为「所见即所得」后，`项目类型`、`实际终验时间` 这两列因不在表格中展示，默认不再导出；如需保留需先在表格中提供对应列。
+
+---
+
+## [2026-07-30] 搜索功能增强：全局搜索 + 关键词匹配 + 搜索帮助
+
+**总目标**：在 ProjectTable 中增加全局搜索模式切换（基础/全局）、关键词匹配方式（任意/全部）、搜索使用说明提示，并补充 e2e 测试。
+
+**状态**：✅ 完成
+
+**干到哪了**：
+- [x] ProjectTable.vue 增加 searchMode、searchMatchMode 状态与对应 UI —— 证据：`git diff` 确认新增全局搜索下拉框、匹配方式选择、帮助 tooltip
+- [x] 响应式适配（1300px 断点） —— 证据：`@media (max-width: 1300px)` 新增样式块
+- [x] e2e 测试覆盖搜索模式切换 —— 证据：`tests/e2e/app.spec.js` 新增 `should switch between basic and global search modes` 用例
+- [x] 提交并推送 —— 证据：`git push origin main` 成功，`6fb762b..cc0defb`
+- [x] Firebase 部署 —— 证据：`firebase deploy --only hosting` 成功，Deploy complete
+
+**边界**：不改动搜索核心逻辑以外的功能；不重构表格渲染。
+
+**关联**：commit `cc0defb`
+
 <!--
 使用规则：
 1. 动代码必记，不动代码不记

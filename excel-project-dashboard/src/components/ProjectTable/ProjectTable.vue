@@ -57,56 +57,13 @@
             :defaultColumns="defaultColumnNames"
           />
 
-          <!-- 搜索框 -->
-          <div class="search-box" :class="{ 'is-global-search': searchMode === 'global' }">
-            <select
-              v-model="searchMode"
-              class="search-mode"
-              aria-label="搜索范围"
-              @change="handleSearch"
-            >
-              <option value="basic">基础搜索</option>
-              <option value="global">全局搜索</option>
-            </select>
-            <select
-              v-if="searchMode === 'global'"
-              v-model="searchMatchMode"
-              class="search-match-mode"
-              aria-label="关键词匹配方式"
-              @change="handleSearch"
-            >
-              <option value="any">任意关键词（或）</option>
-              <option value="all">全部关键词（与）</option>
-            </select>
-            <div class="search-input-wrapper">
-              <input
-                v-model="searchQuery"
-                type="text"
-                :placeholder="searchMode === 'global'
-                  ? '输入全字段关键词...'
-                  : '输入关键词...'"
-                @input="handleSearch"
-              />
-              <svg xmlns="http://www.w3.org/2000/svg" class="search-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            </div>
-            <button
-              type="button"
-              class="search-help"
-              aria-label="搜索使用说明"
-            >
-              <span class="search-help-icon">?</span>
-              <span class="search-help-tooltip" role="tooltip">
-                <strong>搜索使用说明</strong>
-                <span>基础搜索：项目名称、编号、项目经理。</span>
-                <span>全局搜索：项目的所有业务字段。</span>
-                <span>多个关键词用逗号、顿号、分号或换行分隔。</span>
-                <span>“任意关键词（或）”：命中一个即可。</span>
-                <span>“全部关键词（与）”：必须同时命中所有关键词。</span>
-              </span>
-            </button>
-          </div>
+          <!-- 搜索框（公共组件） -->
+          <TableSearchBox
+            v-model:query="searchQuery"
+            v-model:mode="searchMode"
+            v-model:matchMode="searchMatchMode"
+            @change="handleSearch"
+          />
 
           <!-- 导出按钮 -->
           <button
@@ -306,10 +263,13 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onBeforeUnmount, nextTick } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
 import * as XLSX from 'xlsx';
-import ColumnSelector from './ColumnSelector.vue';
-import ImageExportModal from './ImageExportModal.vue';
+import ColumnSelector from '../common/ColumnSelector.vue';
+import ImageExportModal from '../common/ImageExportModal.vue';
+import TableSearchBox from '../common/TableSearchBox.vue';
+import { filterBySearchQuery, pickAllValues } from '../../utils/tableSearch';
+import { useColumnResize } from '../../composables/useColumnResize';
 
 const props = defineProps({
   projects: {
@@ -374,9 +334,8 @@ const DEFAULT_COL_WIDTHS = {
   '验收倒计时': 140,
 };
 
-// 列宽调整状态
-const columnWidths = ref({ ...DEFAULT_COL_WIDTHS });
-const resizing = ref(null);
+// 未登记列（如 Excel 新增列）的兜底宽度
+const FALLBACK_COLUMN_WIDTH = 120;
 
 // 所有表格列（可见列 + 两个日期列 + 倒计时列）
 const allColumns = computed(() => [
@@ -386,52 +345,11 @@ const allColumns = computed(() => [
   '验收倒计时',
 ]);
 
-const startResize = (event, column) => {
-  const th = event.target.closest('th');
-  const currentWidth = th ? th.offsetWidth : 150;
-  resizing.value = { column, startX: event.clientX, startWidth: currentWidth };
-};
-
-const onResizeMove = (event) => {
-  if (!resizing.value) return;
-  const delta = event.clientX - resizing.value.startX;
-  const newWidth = Math.max(60, resizing.value.startWidth + delta);
-  columnWidths.value = { ...columnWidths.value, [resizing.value.column]: newWidth };
-};
-
-const stopResize = () => {
-  resizing.value = null;
-};
-
-watch(resizing, (val) => {
-  if (val) {
-    document.addEventListener('mousemove', onResizeMove);
-    document.addEventListener('mouseup', stopResize);
-  } else {
-    document.removeEventListener('mousemove', onResizeMove);
-    document.removeEventListener('mouseup', stopResize);
-  }
-});
-
-onBeforeUnmount(() => {
-  document.removeEventListener('mousemove', onResizeMove);
-  document.removeEventListener('mouseup', stopResize);
-});
-
-// 列变化时给新列补默认宽度，避免 table-layout:fixed 下宽度为 0
-watch(allColumns, (newCols) => {
-  const widths = { ...columnWidths.value };
-  let changed = false;
-  newCols.forEach(col => {
-    if (!(col in widths)) {
-      widths[col] = 120; // 新列默认 120px
-      changed = true;
-    }
-  });
-  if (changed) {
-    columnWidths.value = widths;
-  }
-});
+// 列宽调整（与 E 区域共用同一套拖拽逻辑）
+const { columnWidths, resizing, startResize } = useColumnResize(
+  allColumns,
+  (column) => DEFAULT_COL_WIDTHS[column] ?? FALLBACK_COLUMN_WIDTH
+);
 
 // 当项目数据变化时，取所有项目键的并集作为可选列
 watch(() => props.projects, (newProjects) => {
@@ -467,17 +385,7 @@ const getColumnValue = (project, colName) => {
   return field ? (project[field] || '') : '';
 };
 
-const normalizeSearchText = (value) => {
-  return String(value ?? '').trim().toLocaleLowerCase('zh-CN');
-};
-
-const parseSearchTerms = (value) => {
-  return String(value ?? '')
-    .split(/[,，、;；\n]+/)
-    .map(normalizeSearchText)
-    .filter(Boolean);
-};
-
+// 搜索取值口径（匹配规则统一由 utils/tableSearch 提供）
 const getBasicSearchValues = (project) => [
   project.projectName,
   project.manager,
@@ -485,11 +393,7 @@ const getBasicSearchValues = (project) => [
   project['项目编号']
 ];
 
-const getGlobalSearchValues = (project) => {
-  return Object.entries(project)
-    .filter(([key]) => key !== 'id')
-    .map(([, value]) => value);
-};
+const getGlobalSearchValues = (project) => pickAllValues(project, ['id']);
 
 // 判断是否为金额列
 const isAmountColumn = (colName) => {
@@ -540,22 +444,13 @@ const filteredProjects = computed(() => {
   }
 
   // 按搜索关键词过滤
-  const terms = parseSearchTerms(searchQuery.value);
-  if (terms.length > 0) {
-    filtered = filtered.filter((project) => {
-      const values = searchMode.value === 'global'
-        ? getGlobalSearchValues(project)
-        : getBasicSearchValues(project);
-
-      const normalizedValues = values.map(normalizeSearchText);
-      const matchesTerm = (term) =>
-        normalizedValues.some((value) => value.includes(term));
-
-      return searchMatchMode.value === 'all'
-        ? terms.every(matchesTerm)
-        : terms.some(matchesTerm);
-    });
-  }
+  filtered = filterBySearchQuery(filtered, {
+    query: searchQuery.value,
+    mode: searchMode.value,
+    matchMode: searchMatchMode.value,
+    getBasicValues: getBasicSearchValues,
+    getGlobalValues: getGlobalSearchValues,
+  });
 
   return filtered;
 });
@@ -952,121 +847,7 @@ const openImageExport = () => {
   border-color: #3b82f6;
 }
 
-/* 搜索框 */
-.search-box {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  width: 360px;
-}
-
-.search-box.is-global-search {
-  width: 500px;
-}
-
-.search-mode {
-  height: 2.25rem;
-  width: 6.5rem;
-  padding: 0 0.5rem;
-  border: 1px solid #d1d5db;
-  border-radius: 0.375rem;
-  background-color: white;
-  color: #374151;
-  font-size: 0.813rem;
-  flex-shrink: 0;
-}
-
-.search-match-mode {
-  height: 2.25rem;
-  width: 8.5rem;
-  padding: 0 0.5rem;
-  border: 1px solid #d1d5db;
-  border-radius: 0.375rem;
-  background-color: white;
-  color: #374151;
-  font-size: 0.813rem;
-  flex-shrink: 0;
-}
-
-.search-input-wrapper {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-}
-
-.search-help {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.5rem;
-  height: 1.5rem;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: #e5e7eb;
-  color: #6b7280;
-  cursor: help;
-  flex-shrink: 0;
-}
-
-.search-help-icon {
-  font-size: 0.875rem;
-  font-weight: 700;
-  line-height: 1;
-}
-
-.search-help-tooltip {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 0.5rem);
-  z-index: 30;
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  width: 300px;
-  padding: 0.75rem 0.875rem;
-  border: 1px solid #e5e7eb;
-  border-radius: 0.5rem;
-  background: #1f2937;
-  color: white;
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.18);
-  font-size: 0.75rem;
-  line-height: 1.5;
-  text-align: left;
-  opacity: 0;
-  pointer-events: none;
-  visibility: hidden;
-  transition: opacity 0.15s ease, visibility 0.15s ease;
-}
-
-.search-help:hover .search-help-tooltip,
-.search-help:focus-visible .search-help-tooltip,
-.search-help:focus-within .search-help-tooltip {
-  opacity: 1;
-  pointer-events: auto;
-  visibility: visible;
-}
-
-.search-box input {
-  width: 100%;
-  height: 2.25rem;
-  padding: 0 1rem 0 2.5rem;
-  border: 1px solid #d1d5db;
-  border-radius: 0.375rem;
-  font-size: 0.875rem;
-  color: #374151;
-}
-
-.search-icon {
-  position: absolute;
-  left: 0.75rem;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #9ca3af;
-  width: 1.25rem;
-  height: 1.25rem;
-}
+/* 搜索框样式见 components/common/TableSearchBox.vue */
 
 /* 导出按钮 */
 .export-btn {
@@ -1360,11 +1141,6 @@ const openImageExport = () => {
     flex-wrap: wrap;
     justify-content: flex-start;
   }
-
-  .search-box,
-  .search-box.is-global-search {
-    width: min(100%, 540px);
-  }
 }
 
 /* 响应式设计 */
@@ -1377,10 +1153,6 @@ const openImageExport = () => {
 
   .toolbar-right {
     justify-content: stretch;
-  }
-
-  .search-box {
-    width: 100%;
   }
 
   .pagination-section {

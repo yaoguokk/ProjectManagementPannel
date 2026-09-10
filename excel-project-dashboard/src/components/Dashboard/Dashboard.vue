@@ -15,7 +15,7 @@
           <UploadArea
             accept-type="business"
             title="经营项目台账上传"
-            description=”请上传文件名含【经营项目台账明细列表】的Excel文件”
+            description="任一入口均可一次选择 1-3 个文件，按文件名自动分发"
             @file-uploaded="handleFileUploaded"
             @file-error="handleFileError"
           />
@@ -24,7 +24,16 @@
           <UploadArea
             accept-type="self-funded"
             title="自筹项目台账上传"
-            description="请上传文件名含【自筹项目台账列表】的Excel文件"
+            description="任一入口均可一次选择 1-3 个文件，按文件名自动分发"
+            @file-uploaded="handleFileUploaded"
+            @file-error="handleFileError"
+          />
+        </div>
+        <div class="upload-col">
+          <UploadArea
+            accept-type="contract"
+            title="支出合同事项上传"
+            description="任一入口均可一次选择 1-3 个文件，按文件名自动分发"
             @file-uploaded="handleFileUploaded"
             @file-error="handleFileError"
           />
@@ -83,6 +92,25 @@
       />
     </div>
 
+    <!-- 区域 E：成本管控 -->
+    <div class="cost-section">
+      <div class="section-header">
+        <span class="section-badge badge-e">E</span>
+        <span class="section-title">成本管控</span>
+      </div>
+
+      <div v-if="contracts.length === 0" class="cost-empty">
+        请先在「数据导入」上传【支出合同事项】台账，用于统计各项成本的实际支出
+      </div>
+
+      <template v-else>
+        <CostChart :summary="costSummary" />
+        <div class="mt-4">
+          <CostTable :rows="costRows" />
+        </div>
+      </template>
+    </div>
+
     <!-- 空状态 -->
     <EmptyState
       v-if="!isLoading && filteredProjects.length === 0"
@@ -104,8 +132,11 @@ import DateRangeFilter from '../filters/DateRangeFilter.vue';
 import ProjectTypeFilter from '../filters/ProjectTypeFilter.vue';
 import KpiCards from '../KpiCards/KpiCards.vue';
 import ProjectTable from '../ProjectTable/ProjectTable.vue';
+import CostChart from '../CostControl/CostChart.vue';
+import CostTable from '../CostControl/CostTable.vue';
 import EmptyState from '../common/EmptyState.vue';
 import UploadArea from '../UploadArea/UploadArea.vue';
+import { calculateCostAnalysis } from '../../data/costData';
 
 const { filters, kpiData, projects, updateFilters, applyFilters } = useProjectData();
 const { showSuccess, showError, showToast } = useToast();
@@ -113,6 +144,14 @@ const { showSuccess, showError, showToast } = useToast();
 const isLoading = ref(false);
 const businessProjects = ref([]);
 const selfFundedProjects = ref([]);
+const contracts = ref([]);
+
+// 成本管控：以台账项目为主、支出合同为辅，按项目计划终验时间筛选
+const costAnalysis = computed(() =>
+  calculateCostAnalysis(projects.value, contracts.value, filters.value)
+);
+const costRows = computed(() => costAnalysis.value.rows);
+const costSummary = computed(() => costAnalysis.value.summary);
 
 // 拼接项目列表：自筹在前，经营在后
 const allProjects = computed(() => [
@@ -154,18 +193,25 @@ const handleOpenDetail = (projectId) => {
 // 处理文件上传成功
 const handleFileUploaded = (fileData) => {
   try {
-    const newProjects = fileData.data;
+    const newData = fileData.data;
     const acceptType = fileData.acceptType;
 
+    // 支出合同事项只用于成本模块匹配实际支出，不参与项目列表
+    if (acceptType === 'contract') {
+      contracts.value = newData;
+      showSuccess(`成功导入支出合同 ${newData.length} 条（${fileData.fileName}）`);
+      return;
+    }
+
     if (acceptType === 'business') {
-      businessProjects.value = newProjects;
+      businessProjects.value = newData;
     } else if (acceptType === 'self-funded') {
-      selfFundedProjects.value = newProjects;
+      selfFundedProjects.value = newData;
     }
 
     const countInfo = businessProjects.value.length > 0 && selfFundedProjects.value.length > 0
       ? `经营${businessProjects.value.length}个 + 自筹${selfFundedProjects.value.length}个`
-      : `${newProjects.length} 个`;
+      : `${newData.length} 个`;
 
     showSuccess(`成功导入 ${countInfo} 项目（${fileData.fileName}）`);
   } catch (error) {
@@ -219,6 +265,7 @@ const resetFilters = () => {
 .badge-b { background-color: #8b5cf6; }
 .badge-c { background-color: #10b981; }
 .badge-d { background-color: #f59e0b; }
+.badge-e { background-color: #ef4444; }
 
 .section-title {
   font-size: 0.875rem;
@@ -285,8 +332,14 @@ const resetFilters = () => {
 
 .upload-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1.25rem;
+}
+
+@media (max-width: 1100px) {
+  .upload-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .upload-col {
@@ -301,5 +354,20 @@ const resetFilters = () => {
 /* === 区域 D：项目明细 === */
 .project-detail-section {
   /* 不设背景 —— 由 ProjectTable 内部各层分别控制 */
+}
+
+/* === 区域 E：成本管控 === */
+.cost-section {
+  /* 不设背景 —— 由 CostChart / CostTable 内部各自控制 */
+}
+
+.cost-empty {
+  background-color: white;
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  padding: 2rem;
+  text-align: center;
+  font-size: 0.875rem;
+  color: #6b7280;
 }
 </style>

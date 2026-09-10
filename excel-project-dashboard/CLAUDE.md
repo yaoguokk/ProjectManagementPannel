@@ -7,11 +7,11 @@
 
 ---
 
-## 当前 UI 布局（4 区域）
+## 当前 UI 布局（5 区域）
 
 ```
 ┌─ A 数据导入 ───────────────────────┐
-│  UploadArea.vue                    │  上传 Excel 文件
+│  UploadArea.vue                    │  经营台账 / 自筹台账 / 支出合同
 └────────────────────────────────────┘
 ┌─ B 数据筛选 ───────────────────────┐
 │  DateRangeFilter + ProjectTypeFilter│  时间范围 + 项目类型
@@ -21,6 +21,9 @@
 └────────────────────────────────────┘
 ┌─ D 项目明细 ──────────────────────┐
 │  ProjectTable.vue                  │  初验Tab / 终验Tab / 状态筛选 / 表格
+└────────────────────────────────────┘
+┌─ E 成本管控 ──────────────────────┐
+│  CostChart + CostTable             │  立项vs实际对比图 / 超支明细表 / 导出
 └────────────────────────────────────┘
 ```
 
@@ -126,6 +129,58 @@ ProjectTable.vue (src/components/ProjectTable/ProjectTable.vue)
     if (!hasRange) return false          // dateRange为空 → 排除全部!
     return dateStr ∈ [start, end]
 ```
+
+### 步骤 5: E 区域 — 成本管控
+
+**目的**：统计各成本成分的实际支出是否超出立项成本。
+
+```
+数据源：
+  · 台账（经营 + 自筹）— 提供 项目编号 / 立项成本列 / 项目计划终验时间含变更
+  · 支出合同事项      — 提供 项目编号 / 支出合同类型 / 事项金额(元)
+    ⚠️ 该表首行是标题（非表头），ACCEPT_CONFIG['contract'].skipRows = 1
+
+成本分类配置 (src/constants/costCategory.js):
+  COST_CATEGORIES = [
+    { key:'subcontract', label:'项目分包费', projectField:'项目分包费(元)',   contractType:'项目分包', active:true  },
+    { key:'hardware',    label:'软硬件采购', projectField:'软硬件采购（元）', contractType:'软硬件',   active:true  },
+    { key:'laborOutsource',  label:'劳务外包费',  projectField:'劳务外包费(元)',   contractType:null, active:false },
+    { key:'laborAllocation', label:'人工分摊费用', projectField:'人工分摊费用(元)', contractType:null, active:false },
+  ]
+  ⚠️ 后两项是【预留位】：立项成本列已存在，但支出合同暂无对应类型，active=false 不参与计算/展示。
+     数据源接入后只需填 contractType + active:true，清洗→聚合→图表→表格→导出全链路自动生效，组件零改动。
+
+计算 (src/data/costData.js，全部纯函数):
+  buildContractIndex(contracts)
+    → { amountMap, detailMap }，一次遍历同时产出：
+      amountMap: Map<项目编号, { [分类key]: 金额 }>
+      detailMap: Map<项目编号, { [分类key]: 合同明细数组 }>   ← 支撑详情下钻
+    忽略「项目管理」「其他」等未纳入分类的类型
+  buildContractCostMap(contracts)
+    → buildContractIndex().amountMap，保留原签名以兼容既有调用
+  calculateCostAnalysis(projects, contracts, filters)
+    过滤: projectType ∈ {经营项目,自筹项目} AND planFinalDate ∈ dateRange（与 B 区终验口径一致）
+    每行: categories[{budget, actual, diff, over, contracts}] / budgetTotal / actualTotal / diffTotal
+          categoryOver(任一分类超支) / overallOver(合计超支) / hasOverBudget
+          contracts = 该科目支出合同明细，按事项金额倒序
+    汇总: projectCount / totalBudget / totalActual / overAmount / overProjectCount / overRate
+  filterCostRows(rows, mode)  → 超支筛选 all / over / normal
+  downloadCostAnalysis(rows)  → 导出 Excel
+
+展示:
+  CostChart.vue — echarts 柱状图（分类维度：立项 vs 实际）+ 单行文字概览（非 KPI 卡片）
+  CostTable.vue — 明细表（动态分类列，超支行 bg-red-50 高亮）+ 超支筛选按钮组 + 分页 + 导出 + 📷生成图片 + 行尾「详情」按钮
+  CostDetailModal.vue — 超支详情弹窗（项目 → 科目 → 支出合同 三级下钻）
+    项目信息条 + 科目卡片切换（超支科目默认选中，取超支金额最大者）
+    + 当前科目合同明细表（合同编号/名称/签订时间/事项名称/事项金额/合同总额/乙方/承办人/采购类型/合同状态）
+    Esc / 遮罩 / × 关闭，打开时锁定 body 滚动
+
+明细字段 (cleanContractData，src/utils/dataCleaner.js):
+  id / projectCode / contractType / amount（成本聚合）
+  + contractNo / contractName / signDate / itemName / contractAmount / supplier / handler / purchaseType / contractStatus（详情展示）
+```
+
+**匹配原则**：以台账为主、支出合同为辅。支出合同中匹配不上台账的行（空编号、旧格式编号）一律忽略，不新增统计对象。
 
 ---
 
@@ -289,6 +344,13 @@ ProjectTable.vue (src/components/ProjectTable/ProjectTable.vue)
 | `src/composables/useProjectData.js` | filters状态, applyFilters, kpiData |
 | `src/components/filters/DateRangeFilter.vue` | B区域-时间范围选择 |
 | `src/components/KpiCards/KpiCards.vue` | C区域-KPI卡片 |
+| `src/components/CostControl/CostChart.vue` | E区域-成本对比柱状图 |
+| `src/components/CostControl/CostTable.vue` | E区域-成本明细表+超支筛选+导出+生成图片+详情入口 |
+| `src/components/CostControl/CostDetailModal.vue` | E区域-超支详情弹窗（项目→科目→合同下钻） |
+| `src/components/common/ImageExportModal.vue` | 公共-表格截图弹窗（D/E 区域共用，props: tableRef/titleText/fileName） |
+| `src/utils/imageExport.js` | 公共-DOM 转 PNG（标题/水印叠加，自动适配 D/E 两种容器结构） |
+| `src/constants/costCategory.js` | 成本分类配置（含预留位） |
+| `src/data/costData.js` | 成本对比计算/超支判定/导出 |
 
 ### 测试数据位置
 经营项目测试数据位置：
@@ -298,6 +360,10 @@ ProjectTable.vue (src/components/ProjectTable/ProjectTable.vue)
 自筹项目测试数据位置：
 ```
 /Users/yao/Desktop/项目全景展示/excel upload file /自筹项目台账列表_20260518160212361.xlsx
+```
+支出合同事项测试数据位置：
+```
+C:/Users/gyfly/Desktop/项目全景面板/source/支出合同事项/_20260910100057413.xlsx
 ```
 
 ### 启动命令
@@ -309,4 +375,4 @@ npm run dev
 
 ---
 
-**最后更新**: 2026-05-22
+**最后更新**: 2026-09-10（新增 E 区域-成本管控模块）

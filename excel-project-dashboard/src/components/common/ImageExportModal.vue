@@ -64,6 +64,8 @@ import { generateTableImage, downloadImage } from '../../utils/imageExport';
 const props = defineProps({
   tableRef: { type: Object, default: null },
   titleText: { type: String, default: '项目全景面板' },
+  // 下载文件名前缀，不含扩展名
+  fileName: { type: String, default: '项目全景面板' },
 });
 
 const emit = defineEmits(['close']);
@@ -93,10 +95,19 @@ async function handleGenerate() {
   }
 }
 
+// 取本地日期，避免 toISOString 的 UTC 偏移导致跨天
+function getLocalDateStr() {
+  const now = new Date();
+  return [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
 function handleDownload() {
   if (!imageUrl.value) return;
-  const date = new Date().toISOString().slice(0, 10);
-  downloadImage(imageUrl.value, `项目全景面板_${date}.png`);
+  downloadImage(imageUrl.value, `${props.fileName}_${getLocalDateStr()}.png`);
   handleCancel();
 }
 

@@ -25,7 +25,7 @@ export async function generateTableImage(element, options = {}) {
       cacheBust: true,
       pixelRatio: 2, // 高清 2x
       backgroundColor: '#ffffff',
-      width: element.scrollWidth, // 指定完整宽度
+      width: expandResult.captureWidth, // 指定完整宽度
     });
 
     // 如果不需叠加，直接返回
@@ -48,6 +48,10 @@ function expandTableForCapture(element) {
   const table = element.querySelector('table') || element;
   const container = table.closest('.table-breakout') || table.parentElement;
   const tableSection = table.closest('.table-section') || table.parentElement;
+
+  // 捕获宽度需在解除约束前测量：
+  // 若传入元素本身就是滚动容器（如 E 区域），解除 overflow 后 scrollWidth 会退化，故取表格内容宽度兜底
+  const captureWidth = Math.max(table.scrollWidth, element.scrollWidth);
 
   // 记录原始样式
   const saved = {
@@ -73,7 +77,7 @@ function expandTableForCapture(element) {
   table.style.maxWidth = 'none';
   table.style.tableLayout = 'auto';
 
-  return { container, tableSection, table, saved };
+  return { container, tableSection, table, saved, captureWidth };
 }
 
 /**

@@ -2,7 +2,8 @@ import {
   formatDate,
   cleanNumber,
   cleanString,
-  cleanExcelData
+  cleanExcelData,
+  cleanContractData
 } from '../src/utils/dataCleaner';
 
 describe('Data Cleaner Utilities', () => {
@@ -213,4 +214,70 @@ describe('Data Cleaner Utilities', () => {
     });
   });
 
+  // 支出合同事项表（首行标题已在解析阶段跳过）
+  const makeContractRow = (overrides = {}) => ({
+    '合同ID': 'C001',
+    '事项ID': 'I001',
+    '项目编号': 'PRJ-001',
+    '支出合同类型': '项目分包',
+    '事项金额(元)': '¥100,000',
+    '数研院合同编号': 'HT-2026-001',
+    '合同名称': '测试合同',
+    '合同签订时间': '2026-03-14',
+    '事项名称': '技术服务',
+    '合同总金额元': '200,000',
+    '乙方合同签约单位': '某供应商',
+    '承办人': '张三',
+    '采购类型': '公开招标',
+    '合同状态': '已签订',
+    ...overrides,
+  });
+
+  describe('cleanContractData', () => {
+    test('应映射成本聚合字段与详情展示字段', () => {
+      const [item] = cleanContractData([makeContractRow()]);
+
+      expect(item).toMatchObject({
+        id: 'C001-I001',
+        projectCode: 'PRJ-001',
+        contractType: '项目分包',
+        amount: 100000,
+        contractNo: 'HT-2026-001',
+        contractName: '测试合同',
+        signDate: '2026-03-14',
+        itemName: '技术服务',
+        contractAmount: 200000,
+        supplier: '某供应商',
+        handler: '张三',
+        purchaseType: '公开招标',
+        contractStatus: '已签订',
+      });
+    });
+
+    test('应丢弃项目编号为空的行', () => {
+      expect(cleanContractData([makeContractRow({ '项目编号': '' })])).toEqual([]);
+    });
+
+    test('缺少合同ID/事项ID时应使用行号兜底生成唯一键', () => {
+      const result = cleanContractData([
+        makeContractRow({ '合同ID': '', '事项ID': '' }),
+        makeContractRow({ '合同ID': '', '事项ID': '', '项目编号': 'PRJ-002' }),
+      ]);
+
+      expect(result.map((item) => item.id)).toEqual(['CONTRACT-1', 'CONTRACT-2']);
+    });
+
+    test('承办人为空时应回退到事项承办人', () => {
+      const [item] = cleanContractData([
+        makeContractRow({ '承办人': '', '事项承办人': '李四' }),
+      ]);
+
+      expect(item.handler).toBe('李四');
+    });
+
+    test('空输入应返回空数组', () => {
+      expect(cleanContractData([])).toEqual([]);
+      expect(cleanContractData()).toEqual([]);
+    });
+  });
 });
