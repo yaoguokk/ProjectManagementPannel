@@ -23,6 +23,8 @@
 - `npm run build`：构建通过。
 - 产物校验：交付 HTML 中 `multiple` 属性已编译进 input（`multiple:""`），「上传文件有误」「一次最多选择」「无法识别文件」等消息文案均在。
 - 已用新构建覆盖导出文件 `项目全景面板_20260910.html`；本地 dev server 返回 200。
+- 已提交并推送：`61fc3d1`（`cc0defb..61fc3d1  main -> main`，远端 https://github.com/yaoguokk/ProjectManagementPannel.git）；推送后 `git status -sb` 为 `## main...origin/main`，`git ls-remote origin refs/heads/main` 指向 `61fc3d1ed246748d0ccde58a58aaea081c9f7e8c`。
+- 环境备注：本机原先未安装 git，本轮用 winget 安装 Git 2.55.0.3（`C:\Program Files\Git\cmd\git.exe`，已打开的终端 PATH 未刷新，需用完整路径）；直连 github.com:443 超时（curl 28），推送须按次传参 `-c http.proxy=http://127.0.0.1:7890`——未写入任何 git config，提交身份也是按次 `-c user.name/-c user.email`（取自历史作者 `yaoguokk`）。
 
 **边界**：
 - 批量校验是原子的：合法文件与问题文件混选时，合法文件也不会被处理，需要去掉问题文件后重新选择（刻意为之，避免"半成功"状态）。
