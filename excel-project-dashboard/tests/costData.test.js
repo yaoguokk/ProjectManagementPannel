@@ -4,8 +4,15 @@ import {
   calculateCostAnalysis,
   filterCostRows,
   buildCostExportTable,
+  matchesContractRule,
 } from '../src/data/costData';
-import { COST_CATEGORIES, ACTIVE_COST_CATEGORIES, OverBudgetFilter } from '../src/constants/costCategory';
+import {
+  COST_CATEGORIES,
+  ACTIVE_COST_CATEGORIES,
+  ContractRuleMode,
+  OverBudgetFilter,
+  createDefaultContractRules,
+} from '../src/constants/costCategory';
 import { DepartmentDisplay } from '../src/utils/departmentDisplay';
 
 const DATE_RANGE = { start: '2026-01-01', end: '2026-12-31' };
@@ -285,12 +292,53 @@ describe('calculateCostAnalysis > 汇总', () => {
     ]);
   });
 
+  test('typeTotals 应按台账项目类型聚合超支项目数与超支金额', () => {
+    const projects = [
+      // 研究咨询类：A 超支 50 万，B 正常
+      makeProject({ id: 'p1', projectCode: 'A', '项目类型': '研究咨询类', '项目分包费(元)': '1000000', '软硬件采购（元）': '0' }),
+      makeProject({ id: 'p2', projectCode: 'B', '项目类型': '研究咨询类', '项目分包费(元)': '1000000', '软硬件采购（元）': '0' }),
+      // 产品销售类：C 超支 30 万
+      makeProject({ id: 'p3', projectCode: 'C', '项目类型': '产品销售类', '项目分包费(元)': '1000000', '软硬件采购（元）': '0' }),
+      // 项目类型缺失 → 归入 '-'
+      makeProject({ id: 'p4', projectCode: 'D', '项目类型': '', '项目分包费(元)': '0', '软硬件采购（元）': '0' }),
+    ];
+    const contracts = [
+      makeContract({ projectCode: 'A', contractType: '项目分包', amount: 1500000 }),
+      makeContract({ projectCode: 'B', contractType: '项目分包', amount: 500000 }),
+      makeContract({ projectCode: 'C', contractType: '项目分包', amount: 1300000 }),
+    ];
+
+    const { summary } = calculateCostAnalysis(projects, contracts, { dateRange: DATE_RANGE });
+
+    expect(summary.typeTotals).toEqual([
+      { label: '研究咨询类', total: 2, overProjectCount: 1, overAmount: 500000, overRate: 50 },
+      { label: '产品销售类', total: 1, overProjectCount: 1, overAmount: 300000, overRate: 100 },
+      { label: '-', total: 1, overProjectCount: 0, overAmount: 0, overRate: 0 },
+    ]);
+  });
+
+  test('typeTotals 排序应稳定：超支项目数相同再比超支金额', () => {
+    const projects = [
+      makeProject({ id: 'p1', projectCode: 'A', '项目类型': '乙类', '项目分包费(元)': '0', '软硬件采购（元）': '0' }),
+      makeProject({ id: 'p2', projectCode: 'B', '项目类型': '甲类', '项目分包费(元)': '0', '软硬件采购（元）': '0' }),
+    ];
+    const contracts = [
+      makeContract({ projectCode: 'A', contractType: '项目分包', amount: 100 }),
+      makeContract({ projectCode: 'B', contractType: '项目分包', amount: 300 }),
+    ];
+
+    const { summary } = calculateCostAnalysis(projects, contracts, { dateRange: DATE_RANGE });
+
+    expect(summary.typeTotals.map((item) => item.label)).toEqual(['甲类', '乙类']);
+  });
+
   test('无数据时汇总应全部为 0', () => {
     const { rows, summary } = calculateCostAnalysis([], [], { dateRange: DATE_RANGE });
     expect(rows).toEqual([]);
     expect(summary.projectCount).toBe(0);
     expect(summary.totalBudget).toBe(0);
     expect(summary.overRate).toBe(0);
+    expect(summary.typeTotals).toEqual([]);
   });
 });
 
@@ -386,5 +434,156 @@ describe('buildCostExportTable', () => {
 
     expect(data[0][headers.indexOf('超支成本类型')]).toBe('-');
     expect(data[0][headers.indexOf('是否超支')]).toBe('正常');
+  });
+});
+
+describe('matchesContractRule > 多列取「或」', () => {
+  const rule = {
+    mode: ContractRuleMode.EXCLUDE,
+    keywords: ['专利', '造价'],
+    matchFields: ['contractName', 'itemName', 'contractSummary'],
+  };
+
+  test('任一匹配列命中即算命中（合同名称 / 事项名称 / 合同内容简述）', () => {
+    expect(matchesContractRule({ contractName: '2026年专利、软著申请代理服务采购项目' }, rule)).toBe(true);
+    expect(matchesContractRule({ itemName: '造价评审' }, rule)).toBe(true);
+    expect(matchesContractRule({ contractSummary: '包含专利年费' }, rule)).toBe(true);
+  });
+
+  test('三列均不含关键词时不算命中', () => {
+    expect(matchesContractRule({
+      contractName: '工程施工分包合同',
+      itemName: '土建施工',
+      contractSummary: '现场施工与验收',
+    }, rule)).toBe(false);
+  });
+
+  test('仅匹配已配置的列，未配置列不参与判断', () => {
+    const onlyName = { keywords: ['专利'], matchFields: ['contractName'] };
+    expect(matchesContractRule({ contractName: '常规分包', itemName: '专利代理' }, onlyName)).toBe(false);
+  });
+
+  test('关键词大小写不敏感、首尾空格被忽略', () => {
+    expect(matchesContractRule({ contractName: 'ABC Patent 服务' }, {
+      keywords: ['  abc  '],
+      matchFields: ['contractName'],
+    })).toBe(true);
+  });
+
+  test('未设置关键词（或未传规则）时一律不命中，等价于不过滤', () => {
+    expect(matchesContractRule({ contractName: '专利代理服务' }, { keywords: [] })).toBe(false);
+    expect(matchesContractRule({ contractName: '专利代理服务' }, { keywords: [' ', ''] })).toBe(false);
+    expect(matchesContractRule({ contractName: '专利代理服务' }, undefined)).toBe(false);
+  });
+});
+
+describe('项目分包费 > 关键词规则口径', () => {
+  const contracts = [
+    makeContract({ id: 'c1', amount: 100000, contractName: '工程施工分包合同', itemName: '土建施工' }),
+    makeContract({
+      id: 'c2',
+      amount: 40000,
+      contractName: '2026年专利、软著申请代理服务采购项目专项技术服务订单合同',
+      itemName: '知识产权事务费',
+    }),
+    makeContract({ id: 'c3', amount: 6000, contractName: '项目造价评审服务结算协议', itemName: '造价评审' }),
+    makeContract({
+      id: 'c4',
+      amount: 50000,
+      contractType: '软硬件',
+      contractName: '测试仪采购合同',
+      itemName: '测试仪',
+    }),
+  ];
+
+  const analyze = (rules) =>
+    calculateCostAnalysis([makeProject()], contracts, { dateRange: DATE_RANGE }, { contractRules: rules });
+
+  test('默认（exclude）应剔除命中关键词的合同，金额与明细同步剔除', () => {
+    const { rows, ruleStats } = analyze(createDefaultContractRules());
+    const [subcontract, hardware] = rows[0].categories;
+
+    expect(subcontract.actual).toBe(100000);
+    expect(subcontract.diff).toBe(-900000);
+    expect(subcontract.over).toBe(false);
+    expect(subcontract.contracts.map((item) => item.id)).toEqual(['c1']);
+
+    // 未配置规则的分类不受影响：软硬件合同名称含「测试」仍照常计入
+    expect(hardware.actual).toBe(50000);
+    expect(hardware.contracts.map((item) => item.id)).toEqual(['c4']);
+
+    expect(ruleStats.subcontract).toMatchObject({
+      total: 3,
+      kept: 1,
+      excluded: 2,
+      excludedAmount: 46000,
+      mode: ContractRuleMode.EXCLUDE,
+    });
+  });
+
+  test('include 模式应只保留命中关键词的合同', () => {
+    const rules = createDefaultContractRules();
+    rules.subcontract.mode = ContractRuleMode.INCLUDE;
+
+    const { rows, ruleStats } = analyze(rules);
+    const [subcontract] = rows[0].categories;
+
+    expect(subcontract.actual).toBe(46000);
+    // 明细按事项金额倒序
+    expect(subcontract.contracts.map((item) => item.id)).toEqual(['c2', 'c3']);
+    expect(ruleStats.subcontract).toMatchObject({
+      total: 3,
+      kept: 2,
+      keptAmount: 46000,
+      excluded: 1,
+      excludedAmount: 100000,
+    });
+  });
+
+  test('清空关键词应回退到「仅按支出合同类型」的全量口径', () => {
+    const rules = createDefaultContractRules();
+    rules.subcontract.keywords = [];
+
+    const { rows, ruleStats } = analyze(rules);
+
+    expect(rows[0].categories[0].actual).toBe(146000);
+    expect(ruleStats.subcontract).toMatchObject({ total: 3, kept: 3, excluded: 0, excludedAmount: 0 });
+  });
+
+  test('未配置规则的分类不产生口径统计条目', () => {
+    const { ruleStats } = analyze(createDefaultContractRules());
+    expect(Object.keys(ruleStats)).toEqual(['subcontract']);
+  });
+
+  test('不传规则时行为与改造前一致（全量统计）', () => {
+    const { rows, ruleStats } = calculateCostAnalysis([makeProject()], contracts, { dateRange: DATE_RANGE });
+
+    expect(rows[0].categories[0].actual).toBe(146000);
+    expect(ruleStats).toEqual({});
+  });
+
+  test('被剔除的合同不参与超支判定', () => {
+    const projects = [makeProject({ '项目分包费(元)': '50000' })];
+    const { rows } = calculateCostAnalysis(
+      projects,
+      [makeContract({ id: 'c1', amount: 80000, contractName: '专利代理服务' })],
+      { dateRange: DATE_RANGE },
+      { contractRules: createDefaultContractRules() }
+    );
+
+    expect(rows[0].categories[0].actual).toBe(0);
+    expect(rows[0].categories[0].over).toBe(false);
+    expect(rows[0].hasOverBudget).toBe(false);
+  });
+
+  test('buildContractIndex 应按规则产出 ruleStats', () => {
+    const { amountMap, detailMap, ruleStats } = buildContractIndex(
+      contracts,
+      createDefaultContractRules()
+    );
+
+    expect(amountMap.get('PRJ-001')).toEqual({ subcontract: 100000, hardware: 50000 });
+    expect(detailMap.get('PRJ-001').subcontract.map((item) => item.id)).toEqual(['c1']);
+    expect(ruleStats.subcontract.excluded).toBe(2);
   });
 });

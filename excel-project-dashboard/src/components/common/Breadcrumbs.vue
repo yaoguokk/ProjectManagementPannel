@@ -7,13 +7,20 @@
       <span class="breadcrumb-separator">/</span>
       <span class="breadcrumb-item">统计分析</span>
       <span class="breadcrumb-separator">/</span>
-      <span class="breadcrumb-item current">项目验收完成率概览</span>
+      <span class="breadcrumb-item current">{{ currentTitle }}</span>
     </div>
   </nav>
 </template>
 
 <script setup>
-// 面包屑组件，展示页面层级关系
+// 面包屑组件：末级标题跟随当前路由（标题文案取自路由表的 ROUTE_TITLES）
+import { computed } from 'vue';
+import { useRoute } from 'vue-router';
+import { ROUTE_TITLES } from '../../router';
+
+const route = useRoute();
+
+const currentTitle = computed(() => ROUTE_TITLES[route?.name] || ROUTE_TITLES.overview);
 </script>
 
 <style scoped>

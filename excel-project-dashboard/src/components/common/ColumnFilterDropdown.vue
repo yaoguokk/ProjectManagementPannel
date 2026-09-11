@@ -2,10 +2,12 @@
   <!--
     表头筛选下拉（Excel 风格）：挂在表头单元格里。
     表格容器是 overflow-x-auto，向下展开的面板会被裁切，因此用 position: fixed + 触发按钮的坐标定位。
+    面板在 <th class="whitespace-nowrap"> 内，必须显式重置文本换行，
+    否则数值列的 select / input 不会各占一行而是并排撑出面板被裁掉。
   -->
   <div
     ref="panelRef"
-    class="column-filter-panel fixed z-[120] w-[292px] overflow-hidden rounded-lg border border-gray-200 bg-white text-left font-normal shadow-xl"
+    class="column-filter-panel fixed z-[120] w-[292px] overflow-hidden rounded-lg border border-gray-200 bg-white text-left font-normal whitespace-normal shadow-xl"
     :style="panelStyle"
     @click.stop
   >

@@ -146,7 +146,7 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(['file-uploaded', 'file-error']);
+const emit = defineEmits(['file-uploaded', 'file-error', 'batch-done']);
 
 const fileInput = ref(null);
 const isDragOver = ref(false);
@@ -207,7 +207,10 @@ const handleDrop = (event) => {
 
 /**
  * 批量处理一次选择的文件：先整批校验路由（任一文件有问题则整批拒绝，不解析任何文件），
- * 校验通过后按选择顺序串行解析，避免并发触发多个进度条互相干扰
+ * 校验通过后按选择顺序串行解析，避免并发触发多个进度条互相干扰。
+ *
+ * 全部文件处理完后再发一次 batch-done：调用方（UploadSection）据此决定何时跳转。
+ * 若在每个文件的 file-uploaded 里就跳转，会卸载本组件，导致后续文件的事件被丢弃。
  */
 const handleFiles = async (files) => {
   const { routes, errors, ok } = routeUploadFiles(files.map((file) => file.name));
@@ -220,15 +223,20 @@ const handleFiles = async (files) => {
     return;
   }
 
+  let successCount = 0;
   for (const { fileName, acceptType } of routes) {
     const file = files.find((item) => item.name === fileName);
     if (file) {
-      await handleFile(file, acceptType);
+      const succeeded = await handleFile(file, acceptType);
+      if (succeeded) successCount += 1;
     }
   }
+
+  emit('batch-done', { total: routes.length, successCount });
 };
 
 // 处理单个文件上传（acceptType 由文件名路由决定，与点击的是哪个入口无关）
+// @returns {Promise<boolean>} 是否解析成功（供 handleFiles 统计整批成功数）
 const handleFile = async (file, acceptType) => {
   const config = ACCEPT_CONFIG[acceptType];
   let progressInterval = null;
@@ -280,7 +288,7 @@ const handleFile = async (file, acceptType) => {
     });
 
     showToast(`${file.name} 解析成功，共 ${cleanedData.length} 条有效数据`, 'success');
-
+    return true;
   } catch (error) {
     // 更新文件状态
     const fileIndex = uploadedFiles.value.findIndex(f => f.id === fileId);
@@ -290,6 +298,7 @@ const handleFile = async (file, acceptType) => {
 
     showToast(error.message, 'error');
     emit('file-error', error);
+    return false;
   } finally {
     if (progressInterval) {
       clearInterval(progressInterval);

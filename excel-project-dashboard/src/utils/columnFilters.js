@@ -173,13 +173,19 @@ export const matchesColumnFilter = (row, col, filter) => {
  * @param {Array}  columns    列定义
  * @param {string} excludeKey 需要忽略的列（下拉统计时排除自身列，才能重新勾选更多值）
  */
-export const filterRowsByColumnFilters = (rows = [], filters = {}, columns = [], excludeKey = '') =>
-  columns.reduce((acc, col) => {
-    if (col.key === excludeKey || col.filter === ColumnFilterKind.NONE) return acc;
-    const filter = filters?.[col.key];
-    if (!isColumnFilterActive(filter)) return acc;
-    return acc.filter((row) => matchesColumnFilter(row, col, filter));
-  }, rows);
+export const filterRowsByColumnFilters = (rows = [], filters = {}, columns = [], excludeKey = '') => {
+  // 先收敛出真正生效的列，再单次遍历「所有生效列求交」。
+  // 原实现逐列 filter：N 个生效列就要生成 N 个中间数组，千行级数据下是纯浪费。
+  const activeColumns = columns.filter((col) =>
+    col
+    && col.key !== excludeKey
+    && col.filter !== ColumnFilterKind.NONE
+    && isColumnFilterActive(filters?.[col.key]));
+
+  if (activeColumns.length === 0) return rows;
+  return rows.filter((row) =>
+    activeColumns.every((col) => matchesColumnFilter(row, col, filters[col.key])));
+};
 
 /** 排序取值是否为空 */
 const isBlankValue = (value) => value === null || value === undefined || String(value).trim() === '';

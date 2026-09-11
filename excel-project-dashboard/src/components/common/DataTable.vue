@@ -1,8 +1,15 @@
 <template>
-  <!-- 表头带拖拽手柄，列宽由 useColumnResize 维护；table-layout: fixed 让宽度严格生效 -->
+  <!--
+    通用表格渲染内核（纯渲染，无业务语义）
+
+    - 吃「列模型 + 行×单元格模型」，见 utils/tableModel 的字段说明
+    - 表头能力：列宽拖拽、表头筛选漏斗（列声明 filter 后出现）、排序标识
+    - 业务单元格通过具名插槽注入：<template #cell-status="{ cell, row }">…</template>
+    - 空态可整体替换：<template #empty>…</template>
+  -->
   <table
-    class="mx-auto table-fixed border-collapse text-sm"
-    :class="{ 'cursor-col-resize select-none': !!resizing }"
+    class="table-fixed border-collapse text-sm"
+    :class="[tableClass, { 'cursor-col-resize select-none': !!resizing }]"
   >
     <colgroup>
       <col
@@ -12,13 +19,14 @@
       />
     </colgroup>
     <thead>
-      <tr class="bg-gray-50 text-gray-500">
+      <tr :class="headRowClass">
         <th
           v-for="col in columns"
           :key="col.key"
-          class="relative whitespace-nowrap px-3 py-3 font-semibold"
-          :class="col.align === 'right' ? 'text-right' : 'text-center'"
+          class="relative whitespace-nowrap font-semibold"
+          :class="[headCellClass, alignClass(col), col.headerClass]"
           :style="widthStyle(col.key)"
+          :title="col.label"
         >
           <span class="inline-flex items-center gap-1">
             <span>{{ col.label }}</span>
@@ -38,6 +46,7 @@
               </svg>
             </button>
           </span>
+
           <!-- resize-handle 仅作标识，样式由 Tailwind 类提供 -->
           <span
             class="resize-handle absolute inset-y-0 right-0 z-10 w-1.5 cursor-col-resize bg-transparent transition-colors hover:bg-blue-500"
@@ -63,69 +72,59 @@
     <tbody>
       <tr
         v-for="item in rows"
-        :key="item.row.id"
-        class="border-b border-gray-50 last:border-b-0"
-        :class="item.row.hasOverBudget ? 'bg-red-50' : 'hover:bg-gray-50'"
+        :key="item.key"
+        :class="[bodyRowClass, item.rowClass]"
       >
         <td
           v-for="cell in item.cells"
           :key="cell.key"
-          class="truncate whitespace-nowrap px-3 py-2.5"
-          :class="cell.cellClass"
+          class="truncate whitespace-nowrap"
+          :class="[bodyCellClass, cell.cellClass]"
           :title="cell.title || cell.text"
         >
-          <template v-if="cell.type === 'status'">
-            <span
-              class="inline-flex px-2 py-1 rounded-full text-xs font-semibold"
-              :class="item.row.hasOverBudget ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'"
-            >
-              {{ item.row.hasOverBudget ? '超支' : '正常' }}
-            </span>
-          </template>
-          <template v-else-if="cell.type === 'action'">
-            <button
-              class="inline-flex h-7 items-center rounded border px-2.5 text-xs font-medium transition-colors"
-              :class="item.row.hasOverBudget
-                ? 'border-red-300 text-red-600 hover:bg-red-100'
-                : 'border-gray-300 text-gray-600 hover:bg-gray-100'"
-              @click="$emit('open-detail', item.row)"
-            >
-              详情
-            </button>
-          </template>
+          <slot
+            v-if="cell.type && $slots[`cell-${cell.type}`]"
+            :name="`cell-${cell.type}`"
+            :cell="cell"
+            :row="item.row"
+          />
           <template v-else>{{ cell.text }}</template>
         </td>
       </tr>
     </tbody>
   </table>
 
-  <div v-if="isEmpty" class="py-12 text-center text-sm text-gray-500">
-    当前筛选条件下暂无成本数据
-  </div>
+  <slot v-if="isEmpty" name="empty">
+    <div class="py-12 text-center text-sm text-gray-500">{{ emptyText }}</div>
+  </slot>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useColumnResize } from '../../composables/useColumnResize';
-import { FALLBACK_COLUMN_WIDTH } from '../../utils/costTableColumns';
 import { ColumnFilterKind, SortOrder, isColumnFilterActive } from '../../utils/columnFilters';
-import ColumnFilterDropdown from '../common/ColumnFilterDropdown.vue';
+import { FALLBACK_COLUMN_WIDTH, alignClass, resolveColumnWidth } from '../../utils/tableModel';
+import ColumnFilterDropdown from './ColumnFilterDropdown.vue';
 
 const props = defineProps({
-  // 可见列定义（含 key / label / align / width）
+  // 列模型（含 key / label / align / width / filter）
   columns: {
     type: Array,
     default: () => [],
   },
-  // 行 × 单元格模型，由父组件构造，保证渲染与列模型解耦
+  // 行模型：{ key, row, cells, rowClass? }
   rows: {
     type: Array,
     default: () => [],
   },
-  // 无数据时展示空状态
+  // 无数据时展示空状态（可用 #empty 插槽替换）
   isEmpty: {
     type: Boolean,
     default: false,
+  },
+  emptyText: {
+    type: String,
+    default: '暂无数据',
   },
   // 各列筛选状态 { [col.key]: { values, operator, number, number2 } }
   filters: {
@@ -142,7 +141,7 @@ const props = defineProps({
     type: String,
     default: '',
   },
-  // 展开列的值列表选项（父组件按"其他列筛选之后"的数据统计）
+  // 展开列的值列表选项（由 useDataTable 按「其他列筛选之后」的数据统计）
   filterOptions: {
     type: Array,
     default: () => [],
@@ -152,6 +151,27 @@ const props = defineProps({
     type: Number,
     default: 0,
   },
+  // 样式钩子：不同区域沿用各自的表格外观，内核不强制统一视觉
+  tableClass: {
+    type: String,
+    default: 'mx-auto',
+  },
+  headRowClass: {
+    type: String,
+    default: 'bg-gray-50 text-gray-500',
+  },
+  headCellClass: {
+    type: String,
+    default: 'px-3 py-3',
+  },
+  bodyRowClass: {
+    type: String,
+    default: 'border-b border-gray-50 last:border-b-0',
+  },
+  bodyCellClass: {
+    type: String,
+    default: 'px-3 py-2.5',
+  },
 });
 
 const emit = defineEmits(['open-detail', 'toggle-filter', 'close-filter', 'update:filter', 'update:sort']);
@@ -159,7 +179,8 @@ const emit = defineEmits(['open-detail', 'toggle-filter', 'close-filter', 'updat
 // 下拉锚点：打开时记录触发按钮的视口坐标，供 fixed 定位
 const anchorRect = ref(null);
 
-const isFilterable = (col) => col.filter !== ColumnFilterKind.NONE;
+// 必须显式声明 filter 才渲染筛选漏斗：D 区域的项目明细表没有表头筛选，不该出现入口
+const isFilterable = (col) => Boolean(col.filter) && col.filter !== ColumnFilterKind.NONE;
 const hasFilter = (key) => isColumnFilterActive(props.filters?.[key]);
 const sortMark = (col) => {
   if (props.sort?.key !== col.key) return '';
@@ -178,12 +199,11 @@ const columnKeys = computed(() => props.columns.map((col) => col.key));
 
 // 默认宽度来自列模型；兜底避免未声明宽度的列在 fixed 布局下塌陷
 const defaultWidths = computed(() =>
-  Object.fromEntries(props.columns.map((col) => [col.key, col.width ?? FALLBACK_COLUMN_WIDTH]))
-);
+  Object.fromEntries(props.columns.map((col) => [col.key, resolveColumnWidth(col)])));
 
 const { columnWidths, resizing, startResize } = useColumnResize(
   columnKeys,
-  (key) => defaultWidths.value[key] ?? FALLBACK_COLUMN_WIDTH
+  (key) => defaultWidths.value[key] ?? FALLBACK_COLUMN_WIDTH,
 );
 
 const widthStyle = (key) => (columnWidths.value[key] ? { width: `${columnWidths.value[key]}px` } : {});

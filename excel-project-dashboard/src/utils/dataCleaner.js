@@ -200,6 +200,8 @@ export const cleanContractData = (rawData) => {
       contractName: cleanString(row['合同名称']),
       signDate: formatDate(row['合同签订时间']),
       itemName: cleanString(row['事项名称']),
+      // 成本关键词规则可匹配的第三列，缺列或空值统一为空串（不影响匹配）
+      contractSummary: cleanString(row['合同内容简述']),
       contractAmount: cleanNumber(row['合同总金额元']),
       supplier: cleanString(row['乙方合同签约单位']),
       handler: cleanString(row['承办人']) || cleanString(row['事项承办人']),

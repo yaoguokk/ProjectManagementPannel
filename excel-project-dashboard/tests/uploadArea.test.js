@@ -61,6 +61,33 @@ describe('UploadArea 批量上传', () => {
     expect(wrapper.emitted('file-error')).toBeUndefined();
   });
 
+  test('多文件上传：每个文件都发 file-uploaded，整批结束后只发一次 batch-done', async () => {
+    const wrapper = mountArea();
+    await chooseFiles(wrapper, [BUSINESS, SELF_A, CONTRACT]);
+
+    // batch-done 必须晚于所有 file-uploaded：调用方靠它决定何时跳转（提前跳转会被卸载而丢事件）
+    expect(wrapper.emitted('file-uploaded')).toHaveLength(3);
+    const done = wrapper.emitted('batch-done');
+    expect(done).toHaveLength(1);
+    expect(done[0][0]).toEqual({ total: 3, successCount: 3 });
+  });
+
+  test('单文件上传同样以 batch-done 收尾', async () => {
+    const wrapper = mountArea();
+    await chooseFiles(wrapper, [CONTRACT]);
+
+    expect(wrapper.emitted('file-uploaded')).toHaveLength(1);
+    expect(wrapper.emitted('batch-done')[0][0]).toEqual({ total: 1, successCount: 1 });
+  });
+
+  test('整批拒绝时不发 batch-done（调用方不应跳转）', async () => {
+    const wrapper = mountArea();
+    await chooseFiles(wrapper, [BUSINESS, UNKNOWN]);
+
+    expect(wrapper.emitted('file-uploaded')).toBeUndefined();
+    expect(wrapper.emitted('batch-done')).toBeUndefined();
+  });
+
   test('两份自筹台账整批拒绝：不解析任何文件', async () => {
     const wrapper = mountArea();
     await chooseFiles(wrapper, [SELF_A, SELF_B]);

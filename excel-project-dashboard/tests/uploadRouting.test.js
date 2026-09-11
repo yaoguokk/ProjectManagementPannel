@@ -7,8 +7,12 @@ import {
   routeUploadFiles,
   matchAcceptType,
   ACCEPT_CONFIG,
+  DATASET_TYPES,
   MAX_UPLOAD_FILES,
   KEYWORD_HINT_TEXT,
+  buildImportMessage,
+  datasetOptions,
+  projectDatasetTypes,
 } from '../src/utils/uploadRouting';
 
 const BUSINESS = '2026年经营项目台账明细列表.xlsx';
@@ -114,5 +118,44 @@ describe('常量与提示文案', () => {
     Object.values(ACCEPT_CONFIG).forEach((item) => {
       expect(KEYWORD_HINT_TEXT).toContain(item.keyword);
     });
+  });
+});
+
+describe('数据集注册表元数据', () => {
+  test('参与项目列表的数据集声明了合并顺序：自筹在前、经营在后', () => {
+    expect(projectDatasetTypes()).toEqual(['self-funded', 'business']);
+    expect(ACCEPT_CONFIG.contract.feedsProjectList).toBe(false);
+  });
+
+  test('每个数据集都声明了上传标题与计数单位', () => {
+    DATASET_TYPES.forEach((type) => {
+      expect(ACCEPT_CONFIG[type].uploadTitle).toBeTruthy();
+      expect(ACCEPT_CONFIG[type].countUnit).toBeTruthy();
+    });
+    expect(ACCEPT_CONFIG.contract.countUnit).toBe('条');
+  });
+
+  test('datasetOptions 按注册表顺序输出上传入口', () => {
+    expect(datasetOptions().map((item) => item.type)).toEqual(DATASET_TYPES);
+    expect(datasetOptions()[0].uploadTitle).toBe('经营项目台账上传');
+  });
+});
+
+describe('buildImportMessage', () => {
+  test('仅一类项目时给出总数', () => {
+    expect(buildImportMessage('business', [{}, {}], { business: [{}, {}] }, 'a.xlsx'))
+      .toBe('成功导入 2 个 项目（a.xlsx）');
+  });
+
+  test('经营与自筹同时存在时给出分项数量（自筹在前）', () => {
+    const datasets = { 'self-funded': [{}, {}, {}], business: [{}, {}] };
+
+    expect(buildImportMessage('business', datasets.business, datasets, 'b.xlsx'))
+      .toBe('成功导入 自筹项目3个 + 经营项目2个 项目（b.xlsx）');
+  });
+
+  test('支出合同按「条」提示且不参与项目数合并', () => {
+    expect(buildImportMessage('contract', [{}], { contract: [{}] }, 'c.xlsx'))
+      .toBe('成功导入支出合同 1 条（c.xlsx）');
   });
 });

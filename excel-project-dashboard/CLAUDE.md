@@ -23,9 +23,89 @@
 │  ProjectTable.vue                  │  初验Tab / 终验Tab / 状态筛选 / 表格
 └────────────────────────────────────┘
 ┌─ E 成本管控 ──────────────────────┐
-│  CostChart + CostTable             │  立项vs实际对比图 / 超支明细表 / 导出
+│  CostChart + CostTable             │  超支分布图（按项目类型）/ 超支明细表 / 导出
 └────────────────────────────────────┘
 ```
+
+---
+
+## 路由与视图（方案 B：vue-router + hash 模式）
+
+产物是单文件 HTML（`vite-plugin-singlefile`），用户常双击 `file://` 打开，
+因此用 **hash 模式**（`#/cost`）——history 模式在 `file://` 下刷新/直达会 404。
+
+| 路由 | 视图 | 组合内容 |
+|---|---|---|
+| `#/overview`（默认） | `views/OverviewView.vue` | A 数据导入 + B 筛选 + C KPI |
+| `#/projects` | `views/ProjectsView.vue` | B 筛选 + D 项目明细表 |
+| `#/cost` | `views/CostView.vue` | B 筛选 + E 成本管控（口径条 + 超支分布图 + 明细表） |
+
+- **数据导入不单独占导航项**：A 区域并入概览页（`#/data` 已下线，旧书签经通配路由回到概览）。
+- **超支分布图只属于 E 区域**：只在 `#/cost` 出现，概览页不放该图。
+- **零侵入复用**：视图只做拼装，直接挂 `components/sections/*` 容器；
+  区域徽章 / 标题 / 配色用 `constants/sections.js` 的 `getSection(id)` 取，不复制文案。
+- **导航即路由表**：`router/index.js` 的 `NAV_ITEMS` 是唯一来源（顶部导航、路由注册、面包屑标题三者同源），
+  新增一个页面只加一条 `NAV_ITEMS`。
+- **筛选条件 ↔ URL query**：`composables/useFilterQuerySync.js`（App.vue 调用一次）做双向同步，
+  纯函数在 `utils/filterQuery.js`。只写非默认值（默认状态 URL 干净），非法参数回退默认值，
+  用 `replace` 写入不污染浏览器历史；可分享、可刷新保持。
+- **面包屑路由驱动**：`common/Breadcrumbs.vue` 末级标题取 `ROUTE_TITLES[route.name]`。
+- **上传后跳转**：`sections/UploadSection.vue` 只在**整批**导入成功后（`UploadArea` 的 `batch-done`）才 `router.push({ name: 'overview' })`；
+  上传区现在就在概览页内，该跳转是「确保回到概览看结果」的兜底。
+  不能在单个文件的 `file-uploaded` 里跳转，否则会卸载承载它的页面、丢掉同批后续文件的事件（见 Bug #6）。
+- `Dashboard/Dashboard.vue` 保留为「整页 5 区域」入口，当前路由未使用它。
+
+---
+
+## 架构分层与扩展点（新增功能先看这里）
+
+```
+上传（A 区域）
+  │  ACCEPT_CONFIG 注册表路由（utils/uploadRouting）
+  ▼
+dataStore.datasets            ← 唯一写入点（setDataset）
+  │  computed 派生（单向）
+  ▼
+projects / kpiData / costAnalysis
+  │  只读消费
+  ▼
+区域容器组件（components/sections/*）  ← 由 constants/sections.js 注册表驱动渲染
+```
+
+**扩展对照表：想做一件事时应该改哪里**
+
+| 需求 | 改动点（其余文件零改动） |
+|---|---|
+| 新增一类数据源（如「预算表」） | `utils/uploadRouting.js` 的 `ACCEPT_CONFIG` 加一条（keyword / cleaner / feedsProjectList / mergeOrder / countUnit / uploadTitle）+ `utils/dataCleaner.js` 加清洗器 + 单测。上传入口、项目合并、导入提示自动跟进 |
+| 新增一个区域（F/G…） | 新建 `components/sections/XxxSection.vue`（内部自行从 store 取数）+ `constants/sections.js` 登记 `{ id, badge, title, tone, order, component }` |
+| 新增区域配色 | `constants/sectionTones.js` |
+| 新增计算口径 | `data/*.js` 写纯函数，并在 `stores/dataStore.js` 暴露一个 computed |
+| 新增表格 | 复用 `composables/useTablePaging`、`common/ColumnFilterDropdown / ColumnSelector / TableSearchBox / ImageExportModal`、`utils/columnFilters | tableSearch` |
+
+**约束（写代码前确认）**
+
+- 组件不得直接改派生数据；写数据只走 `dataStore.setDataset / updateFilters / resetAll`。
+- 全局筛选（时间范围、项目类型）放 store；区域局部状态（分页、列显隐、搜索、排序）留在组件内。
+- `Dashboard.vue` 只负责区域编排与全局空态，不持有任何业务数据。
+- 业务值一律中文（见下方「这是中文数据项目」章节）。
+
+### 表格内核（D / E 区域共用）
+
+```
+区域适配层：ProjectTable.vue（D） / CostTable.vue（E）
+   · 列定义：utils/projectTableColumns.js、utils/costTableColumns.js
+   · 行 → 单元格模型：utils/projectTableRow.js、buildCostCell
+        ↓
+useDataTable.js：搜索 → 列筛选 → 排序 → 分页 + 列显隐（状态编排）
+        ↓
+DataTable.vue：列宽拖拽 / 表头筛选漏斗 / 排序标识 / 空态 / `cell-*` 插槽（纯渲染）
+        ↓
+utils/tableModel.js（列/行/单元格模型）· utils/excelExport.js（统一导出）
+```
+
+- 业务单元格通过具名插槽注入：`#cell-link`（D 项目名称）、`#cell-status`（D 红黄绿 + 状态、E 超支/正常）、`#cell-countdown`（D 两行倒计时）、`#cell-action`（E 详情按钮）。
+- 列必须显式声明 `filter`（`ColumnFilterKind`）才会出现筛选漏斗；`fixed: true` 的列不参与列设置（D 的日期列与倒计时列）。
+- 新增表格时只提供「列模型 + 行映射 + 插槽」，复用内核，不要再自己写分页 / 列宽 / 筛选 / 导出。
 
 ---
 
@@ -164,6 +244,9 @@ ProjectTable.vue (src/components/ProjectTable/ProjectTable.vue)
           categoryOver(任一分类超支) / overallOver(合计超支) / hasOverBudget
           contracts = 该科目支出合同明细，按事项金额倒序
     汇总: projectCount / totalBudget / totalActual / overAmount / overProjectCount / overRate
+          typeTotals: 按台账原始「项目类型」聚合（空值归 '-'）
+            → { label, total, overProjectCount, overAmount, overRate }
+            排序: 超支项目数降序 → 超支金额降序 → 类型名 zh-CN 自然序（横轴稳定不抖动）
   filterCostRows(rows, mode)  → 超支筛选 all / over / normal
   downloadCostAnalysis(rows)  → 导出 Excel
 
@@ -236,6 +319,26 @@ ProjectTable.vue (src/components/ProjectTable/ProjectTable.vue)
 - **现象**: 点击 B 区域任意项目类型按钮后，C/D 区域数据全部消失
 - **根因**: [ProjectTypeFilter.vue:5-25](src/components/filters/ProjectTypeFilter.vue#L5-L25) emit `'all'`/`'business'`/`'self'`（英文），但 `useProjectData.applyFilters()` 用中文 `'全部'`/`'经营项目'` 比较，`'business' !== '全部'` → 进入过滤但匹配不上任何数据
 - **修复**: emit 值改为 `'全部'`/`'经营项目'`/`'自筹项目'`（中文）
+
+### Bug #5: E 区域表头筛选下拉的输入框被面板边框裁掉 （2026-09-11 修复）
+- **现象**: E 区域数值列（如「立项合计」）表头漏斗展开后，条件下拉与数值输入框右侧被面板边框挡住
+- **根因**: 面板挂在 `<th class="whitespace-nowrap">` 内，`white-space: nowrap` 被面板继承，
+  数值列的 `select` 与 `input`（行内块元素）因此不换行、并排撑到 553px（内容区仅 290px），
+  溢出部分被面板 `overflow-hidden` 裁掉
+- **修复**: [ColumnFilterDropdown.vue](src/components/common/ColumnFilterDropdown.vue) 面板根元素加 `whitespace-normal` 重置继承的 nowrap；
+  [costTableHeaderFilter.test.js](tests/costTableHeaderFilter.test.js) 增加回归断言
+
+### Bug #6: 一次上传多个台账只导入了第一个，成本管控页一直是空的 （2026-09-11 修复）
+- **现象**: 在「数据导入」一次选「经营台账 + 自筹台账 + 支出合同」3 个文件，toast 显示 3 个文件都「解析成功」，
+  但 E 区域成本管控始终没有数据（提示「请先上传【支出合同事项】台账」），D 区域也只剩第一个台账的项目
+- **根因**: 「导入后跳转到概览」最初做在**每个文件**的 `file-uploaded` 里 —— 第一份台账成功就切走路由，
+  `DataView` 随即卸载；而 `UploadArea` 是串行异步解析，后续文件的 `emit('file-uploaded')` 在已卸载实例上
+  被 Vue 丢弃（`emit` 在 `isUnmounted` 时直接 return），`setDataset` 从未执行，`store.datasets` 里只有第一个文件
+- **修复**: [UploadArea.vue](src/components/UploadArea/UploadArea.vue) 整批处理完后再发 `batch-done`（携带 `total / successCount`，
+  `handleFile` 返回是否成功）；[UploadSection.vue](src/components/sections/UploadSection.vue) 改为在 `batch-done` 时跳转
+- **回归测试**: [uploadArea.test.js](tests/uploadArea.test.js) 新增「每个文件都发 file-uploaded，整批结束后只发一次 batch-done」
+  「单文件同样以 batch-done 收尾」「整批拒绝不发 batch-done」；新增 [uploadSection.test.js](tests/uploadSection.test.js) 3 项
+  （逐个 `file-uploaded` 不跳转 / `batch-done` 才跳转 / `successCount = 0` 不跳转）
 
 ---
 
@@ -335,16 +438,33 @@ ProjectTable.vue (src/components/ProjectTable/ProjectTable.vue)
 
 | 文件 | 作用 |
 |-----|------|
-| `src/components/Dashboard/Dashboard.vue` | 主界面, 4区域布局, 数据流枢纽 |
+| `src/components/Dashboard/Dashboard.vue` | 区域编排入口（按 `constants/sections.js` 渲染 + 全局空态），不持有业务数据 |
+| `src/stores/dataStore.js` | 应用级数据状态：datasets + 派生 projects/kpiData/costAnalysis |
+| `src/constants/sections.js` | 区域注册表（新增区域只改这里 + 新建 Section 组件），并提供 `getSection(id)` |
+| `src/router/index.js` | 路由表 + `NAV_ITEMS`（导航/路由/标题同源）+ `ROUTE_TITLES` |
+| `src/views/*.vue` | 3 个页面视图（Overview / Projects / Cost），只拼装既有区域容器 |
+| `src/utils/filterQuery.js` | 公共-筛选条件 ↔ URL query 纯函数（编码/解码/等价判断） |
+| `src/composables/useFilterQuerySync.js` | 公共-筛选条件 ↔ URL query 双向同步（App.vue 调用一次） |
+| `src/components/sections/*.vue` | 各区域容器组件（A/B/C/D/E，自行从 store 取数） |
+| `src/composables/useTablePaging.js` | 公共-表格分页（D/E 共用） |
+| `src/utils/projectFilters.js` | 公共-默认筛选条件（年初~本月末 + 全部） |
+| `src/constants/sectionTones.js` | 公共-区域徽章配色 |
+| `src/components/common/DataTable.vue` | 公共-表格渲染内核（列宽/表头筛选/排序标识/空态/`cell-*` 插槽） |
+| `src/composables/useDataTable.js` | 公共-表格状态内核（搜索/列筛选/排序/分页/列显隐） |
+| `src/utils/tableModel.js` | 公共-列/行/单元格模型与金额列判定 |
+| `src/utils/excelExport.js` | 公共-Excel 导出（表头 + 二维数据 + 金额格式） |
+| `src/utils/projectTableColumns.js` | D区域-列模型（Excel 列 + 固定日期/倒计时列） |
+| `src/utils/projectTableRow.js` | D区域-行模型（链接/状态/金额/倒计时单元格） |
 | `src/components/UploadArea/UploadArea.vue` | A区域-文件上传 |
 | `src/components/ProjectTable/ProjectTable.vue` | D区域-表格, isDateInRange问题所在 |
 | `src/utils/dataCleaner.js` | 数据清洗, 精确列名映射 |
 | `src/utils/excelParser.js` | SheetJS解析 |
 | `src/data/projectData.js` | KPI计算公式 |
-| `src/composables/useProjectData.js` | filters状态, applyFilters, kpiData |
+| `src/composables/useProjectData.js` | dataStore 的组合式函数薄封装（保持旧调用签名） |
 | `src/components/filters/DateRangeFilter.vue` | B区域-时间范围选择 |
 | `src/components/KpiCards/KpiCards.vue` | C区域-KPI卡片 |
-| `src/components/CostControl/CostChart.vue` | E区域-成本对比柱状图 |
+| `src/components/CostControl/CostChart.vue` | E区域-超支分布双轴图（柱=超支项目数/折线=超支金额） |
+| `src/utils/costChartOption.js` | E区域-图表配置纯函数（双轴/格式化/tooltip） |
 | `src/components/CostControl/CostTable.vue` | E区域-成本明细表+超支筛选+导出+生成图片+详情入口 |
 | `src/components/CostControl/CostDetailModal.vue` | E区域-超支详情弹窗（项目→科目→合同下钻） |
 | `src/components/common/ImageExportModal.vue` | 公共-表格截图弹窗（D/E 区域共用，props: tableRef/titleText/fileName） |
@@ -375,4 +495,85 @@ npm run dev
 
 ---
 
-**最后更新**: 2026-09-10（新增 E 区域-成本管控模块）
+### 改进 #2: E 区域图表改为「按项目类型超支分布」 （2026-09-11）
+- **需求**: 不再展示成本对比（立项 vs 实际支出），改为展示超支项目数量与类型的对比
+- **横轴**: 台账原始「项目类型」列（`projectTypeLabel`，空值统一归 `-`）
+- **主指标（左轴柱）**: 超支项目数，口径 = `row.hasOverBudget`（任一分类超支或整体超支），与明细表「状态」列、超支筛选一致
+- **副指标（右轴折线）**: 超支金额，口径 = `Σ max(0, row.diffTotal)`，与概览行 `overAmount` 一致
+- **改动**:
+  - [costData.js](src/data/costData.js) `summarize` 新增 `typeTotals` 聚合（稳定排序；`categoryTotals` 保留不删，避免连锁改动）
+  - [costChartOption.js](src/utils/costChartOption.js) 新增图表配置纯函数 `buildOverBudgetOption`；[CostChart.vue](src/components/CostControl/CostChart.vue) 只保留实例/resize/watch/dispose
+  - 测试: [costChartOption.test.js](tests/costChartOption.test.js)（新增 10 条）+ [costData.test.js](tests/costData.test.js)（追加 `typeTotals` 断言）
+
+---
+
+### 改进 #3: 架构加固（为更多数据源与更多区域铺路） （2026-09-11）
+- **背景**: 原结构中 Dashboard 既是 5 区域编排器、又是数据容器（`businessProjects/selfFundedProjects/contracts` 三个 ref），
+  还通过 `watch(allProjects → projects.value = merged)` 把合并结果写回 composable（双向流动）；新增区域必须改 Dashboard，
+  新增数据源要改上传分派 if/else
+- **状态层**: 引入 pinia（依赖早已存在）的 [dataStore.js](src/stores/dataStore.js) 作为唯一写入点：
+  `datasets` → 派生 `projects / contracts / kpiData / costAnalysis(costRows/costSummary/costRuleStats)`；
+  [useProjectData.js](src/composables/useProjectData.js) 退化为薄适配层（旧调用签名不变）；
+  `createDefaultFilters` 抽到 [projectFilters.js](src/utils/projectFilters.js) 以避免循环依赖
+- **数据集注册表**: [uploadRouting.js](src/utils/uploadRouting.js) 的 `ACCEPT_CONFIG` 增加
+  `feedsProjectList / mergeOrder / countUnit / uploadTitle` 元数据，并新增 `datasetOptions()` 与 `buildImportMessage()`；
+  上传分派与提示文案完全由注册表驱动
+- **区域注册表**: 新增 [sections.js](src/constants/sections.js)（id/badge/title/tone/order/component）+
+  [SectionHeader.vue](src/components/common/SectionHeader.vue) + [sectionTones.js](src/constants/sectionTones.js)；
+  5 个区域拆为 `components/sections/*` 容器组件，[Dashboard.vue](src/components/Dashboard/Dashboard.vue) 缩为 50 行编排入口
+- **公共能力**: 新增 [useTablePaging.js](src/composables/useTablePaging.js)，D 区域 ProjectTable 与 E 区域 CostTable 改为共用
+- **测试**: 新增 `dataStore(7) / useTablePaging(6) / sections(3)` 共 16 条，`uploadRouting` 追加 6 条，全量 **226 条通过**；
+  构建通过（688 模块 → 单文件 1.79MB）；重构前后截图逐区一致、console error = 0
+- **回滚点**: `_backup/excel-project-dashboard_20260911_pre-refactor/`（含 zip 与重构前整页截图）
+
+---
+
+### 改进 #4: 表格内核统一（D/E 共用一套表格能力） （2026-09-11）
+- **背景**: D 区域 `ProjectTable.vue` 1037 行把列模型、单元格模板、导出、样式全部内联；E 区域另有一套 `CostTableGrid` + 列模型。
+  渲染层、表头筛选排序、导出、截图 ref 四处双份实现
+- **内核**: 新增 [tableModel.js](src/utils/tableModel.js)（列/行/单元格模型）、[useDataTable.js](src/composables/useDataTable.js)
+  （搜索 → 列筛选 → 排序 → 分页 + 列显隐）、[DataTable.vue](src/components/common/DataTable.vue)（纯渲染内核 + `cell-*` 插槽）、
+  [excelExport.js](src/utils/excelExport.js)（统一导出）
+- **迁移**:
+  - E 区域：[CostTable.vue](src/components/CostControl/CostTable.vue) 改用内核；删除重复的 `CostTableGrid.vue`
+  - D 区域：拆出 [projectTableColumns.js](src/utils/projectTableColumns.js) / [projectTableRow.js](src/utils/projectTableRow.js)，
+    表格样式经 `:deep()` 穿透内核，视觉与导出结构保持不变
+- **迁移中修复**: 金额列漏了格式化（一度直接输出原始值）与日期列取值错误，由新增的 `projectTableRow.test.js` 捕获；
+  空金额现展示 `0`，与原实现一致
+- **千行级性能**: 列筛选由「逐列 filter」改为单次遍历求交；金额 `Intl.NumberFormat` 改为模块级复用；
+  新增 `tableKernelPerformance.test.js`（1000 行合成数据）兜住复杂度退化
+- **测试**: 新增 `tableModel(9) / excelExport(6) / useDataTable(13) / projectTableRow(8) / projectTableColumns(8) / tableKernelPerformance(2)`
+  + E 区域追加 2 条，全量 **275 条通过**；构建通过（dist 单文件 1.79MB）；D/E 截图与 DOM 探针核对一致，console error = 0
+- **方案文档**: [docs/table-kernel-unification-plan.md](docs/table-kernel-unification-plan.md)
+- **回滚点**: `_backup/excel-project-dashboard_20260911_pre-table-kernel/`（含 zip）
+
+---
+
+### 改进 #5: 多页面路由（方案 B：vue-router + hash 模式） （2026-09-11）
+- **背景**: 单页把 A~E 五个区域纵向堆在一起，页面过长、无法直达某一类信息；需要可分享、可刷新的分页入口
+- **路由**: 新增 [router/index.js](src/router/index.js)，hash 模式（单文件产物 `file://` 可用），
+  `NAV_ITEMS` 作为「导航 / 路由注册 / 面包屑标题」的唯一来源；`/` 与未匹配路径都重定向到 `/overview`
+- **视图**: 新增 [views/OverviewView.vue](src/views/OverviewView.vue)、[ProjectsView.vue](src/views/ProjectsView.vue)、
+  [CostView.vue](src/views/CostView.vue)（零侵入复用，只拼装既有 `components/sections/*`，区域元数据走 `getSection(id)`）
+- **布局**: [App.vue](src/App.vue) 改为「顶部导航 + Breadcrumbs + RouterView」，并保留原 1400px 居中容器；
+  [Breadcrumbs.vue](src/components/common/Breadcrumbs.vue) 末级标题改为跟随路由
+- **筛选 ↔ URL**: 新增 [filterQuery.js](src/utils/filterQuery.js)（纯函数）与
+  [useFilterQuerySync.js](src/composables/useFilterQuerySync.js)（双向同步，只写非默认值，非法参数回退，replace 不污染历史）
+- **上传后跳转**: [UploadSection.vue](src/components/sections/UploadSection.vue) 在整批导入成功后（`batch-done`）跳回概览
+- **测试**: 新增 `filterQuery(9) / router(4)`，`sections` 追加 1 条（`getSection`），全量 **289 条通过**；
+  构建通过（713 modules，单文件 1,823.35 kB）
+
+---
+
+### 改进 #6: 页面职责归位（数据导入并入概览、超支分布图只留 E 区域） （2026-09-11）
+- **需求**: 概览页不该出现「超支项目分布」图（它属于 E 区域成本管控）；顶部导航不再单独占一个「数据导入」项，数据导入并入概览页
+- **视图**: [OverviewView.vue](src/views/OverviewView.vue) 改为 A 数据导入 + B 筛选 + C KPI，移除 `CostChart`；
+  删除 [views/DataView.vue](src/views/DataView.vue)
+- **路由**: [router/index.js](src/router/index.js) 的 `NAV_ITEMS` 收缩为 3 项（概览 / 项目明细 / 成本管控）；
+  `#/data` 通过通配路由重定向到概览，旧书签不 404
+- **测试**: [router.test.js](tests/router.test.js) 断言改为 3 个页面、并断言 `/data` 不再注册、`/data` 书签回到概览；全量 **295 条通过**
+- **真机核对**: 概览页含 A/B/C 三区、无「超支项目分布」；`#/cost` 有该图；导航 3 项；访问 `#/data` 回到 `#/overview`；console error = 0
+
+---
+
+**最后更新**: 2026-09-11（页面职责归位：数据导入并入概览、超支分布图只留 E 区域）

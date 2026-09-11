@@ -50,11 +50,11 @@
         </div>
 
         <div class="toolbar-right">
-          <!-- 列设置 -->
+          <!-- 列设置（公共组件；日期列与倒计时列固定展示，不参与勾选） -->
           <ColumnSelector
-            :availableColumns="allColumnNames"
-            v-model:selectedColumns="visibleColumns"
-            :defaultColumns="defaultColumnNames"
+            :availableColumns="selectableColumnLabels"
+            v-model:selectedColumns="selectedColumnLabels"
+            :defaultColumns="DEFAULT_PROJECT_COLUMNS"
           />
 
           <!-- 搜索框（公共组件） -->
@@ -69,7 +69,7 @@
           <button
             @click="exportToExcel"
             class="export-btn"
-            :disabled="!filteredProjects.length"
+            :disabled="!filteredRows.length"
           >
             导出Excel
           </button>
@@ -78,7 +78,7 @@
           <button
             @click="openImageExport"
             class="image-export-btn"
-            :disabled="!filteredProjects.length"
+            :disabled="!filteredRows.length"
           >
             📷 生成图片
           </button>
@@ -89,120 +89,91 @@
     <!-- 第三层：数据表格 — 独立撑满视口宽度 -->
     <div class="table-breakout">
       <div class="table-section">
-        <div class="table-container">
-          <table class="table" :class="{ 'is-resizing': !!resizing }" :key="allColumns.join(',')">
-            <colgroup>
-              <col
-                v-for="col in allColumns"
-                :key="col"
-                :style="columnWidths[col] ? { width: columnWidths[col] + 'px', minWidth: columnWidths[col] + 'px' } : {}"
-              />
-            </colgroup>
-            <thead>
-              <tr>
-                <th
-                  v-for="col in allColumns"
-                  :key="col"
-                  :class="{ 'amount-header': isAmountColumn(col) }"
-                  :style="columnWidths[col] ? { width: columnWidths[col] + 'px' } : {}"
+        <div ref="tableContainerRef" class="table-container">
+          <DataTable
+            :columns="visibleColumns"
+            :rows="displayRows"
+            :is-empty="filteredRows.length === 0"
+            table-class="table"
+            head-row-class=""
+            head-cell-class=""
+            body-row-class=""
+            body-cell-class=""
+          >
+            <!-- 项目名称：链接下钻 -->
+            <template #cell-link="{ cell }">
+              <a
+                href="#"
+                class="project-name"
+                @click.prevent="openProjectDetail(cell.projectId)"
+              >
+                {{ cell.text }}
+              </a>
+            </template>
+
+            <!-- 项目状态：验收红绿灯 + 状态标签 -->
+            <template #cell-status="{ cell }">
+              <span class="traffic-status-group">
+                <span
+                  v-if="cell.traffic"
+                  class="traffic-tag"
+                  :class="cell.traffic.cssClass"
                 >
-                  {{ col }}
-                  <div
-                    class="resize-handle"
-                    @mousedown.prevent="startResize($event, col)"
-                  ></div>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="project in paginatedProjects" :key="project.id">
-                <td
-                  v-for="col in visibleColumns"
-                  :key="col"
-                  :class="{ 'amount': isAmountColumn(col), 'col-project-name': col === '项目名称', 'col-project-code': col === '项目编号' }"
-                  :title="getColumnValue(project, col)"
-                >
-                  <template v-if="col === '项目名称'">
-                    <a
-                      href="#"
-                      class="project-name"
-                      @click.prevent="openProjectDetail(project.id)"
-                    >
-                      {{ project['项目名称'] || project.projectName }}
-                    </a>
+                  {{ cell.traffic.label }}
+                </span>
+                <span class="status-tag" :class="cell.statusClass">
+                  {{ cell.statusText }}
+                </span>
+              </span>
+            </template>
+
+            <!-- 验收倒计时：初验 / 终验两行 -->
+            <template #cell-countdown="{ cell }">
+              <div class="countdown">
+                <div class="countdown-row">
+                  <span class="phase">初验</span>
+                  <template v-if="cell.countdown.initial.state === 'done'">
+                    <span class="dot gray"></span><span class="done">已验收</span>
                   </template>
-                  <template v-else-if="col === '项目状态'">
-                    <span class="traffic-status-group">
-                      <span
-                        v-if="getTrafficLight(project)"
-                        class="traffic-tag"
-                        :class="getTrafficLight(project).cssClass"
-                      >
-                        {{ getTrafficLight(project).label }}
-                      </span>
-                      <span
-                        class="status-tag"
-                        :class="getStatusClass(project['项目状态'] || project.status)"
-                      >
-                        {{ project['项目状态'] || project.status }}
-                      </span>
-                    </span>
-                  </template>
-                  <template v-else-if="isAmountColumn(col)">
-                    {{ formatCurrency(getColumnValue(project, col)) }}
+                  <template v-else-if="cell.countdown.initial.state === 'na'">
+                    <span class="na">—</span>
                   </template>
                   <template v-else>
-                    {{ getColumnValue(project, col) }}
+                    <span class="dot" :class="cell.countdown.initial.color"></span>
+                    <span class="days" :class="cell.countdown.initial.color">
+                      {{ cell.countdown.initial.text }}
+                    </span>
                   </template>
-                </td>
-                <td>{{ getPlanDate(project) }}</td>
-                <td>{{ getActualDate(project) }}</td>
-                <td class="countdown-cell">
-                  <div class="countdown">
-                    <div class="countdown-row">
-                      <span class="phase">初验</span>
-                      <template v-if="project.actualInitialDate">
-                        <span class="dot gray"></span><span class="done">已验收</span>
-                      </template>
-                      <template v-else-if="!project.planInitialDate">
-                        <span class="na">—</span>
-                      </template>
-                      <template v-else>
-                        <span class="dot" :class="getCountdownColor(getDaysRemaining(project.planInitialDate))"></span>
-                        <span class="days" :class="getCountdownColor(getDaysRemaining(project.planInitialDate))">
-                          {{ getCountdownText(getDaysRemaining(project.planInitialDate)) }}
-                        </span>
-                      </template>
-                    </div>
-                    <div class="countdown-row">
-                      <span class="phase">终验</span>
-                      <template v-if="project.actualFinalDate">
-                        <span class="dot gray"></span><span class="done">已验收</span>
-                      </template>
-                      <template v-else-if="!project.planFinalDate">
-                        <span class="na">—</span>
-                      </template>
-                      <template v-else>
-                        <span class="dot" :class="getCountdownColor(getDaysRemaining(project.planFinalDate))"></span>
-                        <span class="days" :class="getCountdownColor(getDaysRemaining(project.planFinalDate))">
-                          {{ getCountdownText(getDaysRemaining(project.planFinalDate)) }}
-                        </span>
-                      </template>
-                    </div>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+                </div>
+                <div class="countdown-row">
+                  <span class="phase">终验</span>
+                  <template v-if="cell.countdown.final.state === 'done'">
+                    <span class="dot gray"></span><span class="done">已验收</span>
+                  </template>
+                  <template v-else-if="cell.countdown.final.state === 'na'">
+                    <span class="na">—</span>
+                  </template>
+                  <template v-else>
+                    <span class="dot" :class="cell.countdown.final.color"></span>
+                    <span class="days" :class="cell.countdown.final.color">
+                      {{ cell.countdown.final.text }}
+                    </span>
+                  </template>
+                </div>
+              </div>
+            </template>
 
-          <div v-if="filteredProjects.length === 0" class="empty-state">
-            <svg xmlns="http://www.w3.org/2000/svg" class="empty-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-            </svg>
-            <p class="empty-text">暂无数据</p>
-          </div>
+            <template #empty>
+              <div class="empty-state">
+                <svg xmlns="http://www.w3.org/2000/svg" class="empty-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                </svg>
+                <p class="empty-text">暂无数据</p>
+              </div>
+            </template>
+          </DataTable>
+        </div>
       </div>
-    </div>
     </div><!-- /.table-breakout -->
 
     <!-- 图片导出对话框 -->
@@ -215,7 +186,7 @@
 
     <!-- 第四层：底部分页器 — 对齐 A/B/C 区域宽度 -->
     <div class="control-wrapper" style="margin-top: 1px;">
-      <div class="pagination-section" v-if="filteredProjects.length > 0">
+      <div class="pagination-section" v-if="filteredRows.length > 0">
         <div class="pagination-left">
           <select
             v-model="pageSize"
@@ -254,7 +225,7 @@
 
         <div class="pagination-right">
           <div class="pagination-info">
-            共 {{ filteredProjects.length }} 条
+            共 {{ filteredRows.length }} 条
           </div>
         </div>
       </div>
@@ -263,396 +234,221 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick } from 'vue';
-import * as XLSX from 'xlsx';
+/**
+ * D 区域项目明细表
+ *
+ * 表格状态（搜索 / 分页 / 列显隐）来自 useDataTable 内核，渲染交给 DataTable；
+ * 业务筛选（项目类型 / Tab + 日期范围 / 验收状态）与导出、截图留在这里。
+ * 列模型与行映射见 utils/projectTableColumns.js、utils/projectTableRow.js（纯函数，可单测）。
+ */
+import { computed, ref, watch } from 'vue';
 import ColumnSelector from '../common/ColumnSelector.vue';
 import ImageExportModal from '../common/ImageExportModal.vue';
 import TableSearchBox from '../common/TableSearchBox.vue';
+import DataTable from '../common/DataTable.vue';
 import { filterBySearchQuery, pickAllValues } from '../../utils/tableSearch';
-import { useColumnResize } from '../../composables/useColumnResize';
+import { useDataTable } from '../../composables/useDataTable';
+import { downloadTable } from '../../utils/excelExport';
+import { isAmountColumn } from '../../utils/tableModel';
+import {
+  DEFAULT_PROJECT_COLUMNS,
+  buildProjectColumns,
+  extractColumnNames,
+  getColumnValue,
+} from '../../utils/projectTableColumns';
+import {
+  buildProjectRow,
+  getCountdownExport,
+  tabLabelOf,
+} from '../../utils/projectTableRow';
 
 const props = defineProps({
   projects: {
     type: Array,
-    required: true
+    required: true,
   },
   projectType: {
     type: String,
-    default: '全部'
+    default: '全部',
   },
   dateRange: {
     type: Object,
-    default: () => ({ start: '', end: '' })
-  }
+    default: () => ({ start: '', end: '' }),
+  },
 });
 
 const emit = defineEmits(['export', 'open-detail']);
 
 const currentTab = ref('initial');
-const searchQuery = ref('');
-const searchMode = ref('basic');
-const searchMatchMode = ref('any');
 const statusFilter = ref('all');
-const pageSize = ref(10);
-const currentPage = ref(1);
 
-// 程序内部字段（这些不是Excel原始列，需要从列选择器中排除）
-const PROGRAM_FIELDS = [
-  'id', 'projectCode', 'projectName', 'manager', 'department',
-  'projectType', 'budget', 'planInitialDate', 'planFinalDate',
-  'actualInitialDate', 'actualFinalDate', 'startDate', 'status'
-];
-
-// 默认展示的Excel列（对应目前显示的7个数据列，日期列另外固定显示）
-const defaultColumnNames = [
-  '项目编号', '项目名称', '项目经理', '业务部所',
-  '项目类型', '立项收入(元)', '项目状态'
-];
-
-// 金额类列（值需要格式化为货币）
-const amountColumnKeywords = ['收入', '成本', '金额', '费用', '预算', '支出', '分包费', '外包费', '分摊', '采购', '租赁'];
-
-// 所有可选的Excel列名（从第一个项目中提取中文字段名）
-const allColumnNames = ref([...defaultColumnNames]);
-
-// 当前选中的可见列
-const visibleColumns = ref([...defaultColumnNames]);
-
-// 默认列宽（含日期列，两个Tab共用）
-const DEFAULT_COL_WIDTHS = {
-  '项目编号': 160,
-  '项目名称': 300,
-  '项目经理': 100,
-  '业务部所': 120,
-  '项目类型': 100,
-  '立项收入(元)': 140,
-  '项目状态': 180,
-  '计划初验时间': 140,
-  '实际初验时间': 140,
-  '计划终验时间': 140,
-  '实际终验时间': 140,
-  '验收倒计时': 140,
-};
-
-// 未登记列（如 Excel 新增列）的兜底宽度
-const FALLBACK_COLUMN_WIDTH = 120;
-
-// 所有表格列（可见列 + 两个日期列 + 倒计时列）
-const allColumns = computed(() => [
-  ...visibleColumns.value,
-  `计划${currentTab.value === 'initial' ? '初验' : '终验'}时间`,
-  `实际${currentTab.value === 'initial' ? '初验' : '终验'}时间`,
-  '验收倒计时',
-]);
-
-// 列宽调整（与 E 区域共用同一套拖拽逻辑）
-const { columnWidths, resizing, startResize } = useColumnResize(
-  allColumns,
-  (column) => DEFAULT_COL_WIDTHS[column] ?? FALLBACK_COLUMN_WIDTH
-);
-
-// 当项目数据变化时，取所有项目键的并集作为可选列
-watch(() => props.projects, (newProjects) => {
-  if (newProjects && newProjects.length > 0) {
-    const keySet = new Set();
-    newProjects.forEach(project => {
-      Object.keys(project).forEach(key => {
-        if (!PROGRAM_FIELDS.includes(key)) {
-          keySet.add(key);
-        }
-      });
-    });
-    const excelColumns = [...keySet];
-    allColumnNames.value = excelColumns;
-
-    // 清理已被移除的选中列
-    visibleColumns.value = visibleColumns.value.filter(
-      col => allColumnNames.value.includes(col)
-    );
+// 可选 Excel 列名：数据变化时取所有项目键的并集
+const excelColumnNames = ref([...DEFAULT_PROJECT_COLUMNS]);
+watch(() => props.projects, (projects) => {
+  if (projects && projects.length > 0) {
+    excelColumnNames.value = extractColumnNames(projects);
   }
 }, { immediate: true });
 
-// 列名 → 程序字段回退映射（自筹项目Excel无"项目经理"/"业务部所"列名，需回退到manager/department）
-const COLUMN_TO_FIELD = {
-  '项目经理': 'manager',
-  '业务部所': 'department',
-};
-
-// 获取列的值（优先使用Excel原始列名，若无则回退到程序字段）
-const getColumnValue = (project, colName) => {
-  if (project[colName] !== undefined) return project[colName];
-  const field = COLUMN_TO_FIELD[colName];
-  return field ? (project[field] || '') : '';
-};
+// 列模型：Excel 列 + 固定日期列 + 固定倒计时列
+const allColumns = computed(() => buildProjectColumns({
+  columnNames: excelColumnNames.value,
+  tab: currentTab.value,
+}));
 
 // 搜索取值口径（匹配规则统一由 utils/tableSearch 提供）
 const getBasicSearchValues = (project) => [
   project.projectName,
   project.manager,
   project.projectCode,
-  project['项目编号']
+  project['项目编号'],
 ];
 
 const getGlobalSearchValues = (project) => pickAllValues(project, ['id']);
 
-// 判断是否为金额列
-const isAmountColumn = (colName) => {
-  return amountColumnKeywords.some(keyword => colName.includes(keyword));
-};
-
-// 判断日期是否在选定时间范围内
+// 判断日期是否在选定时间范围内（与既有口径一致：日期缺失或范围不完整即排除）
 const isDateInRange = (dateStr) => {
   if (!dateStr) return false;
   const hasRange = props.dateRange?.start && props.dateRange?.end;
   if (!hasRange) return false;
-  const d = new Date(dateStr);
-  return d >= new Date(props.dateRange.start) && d <= new Date(props.dateRange.end);
+  const date = new Date(dateStr);
+  return date >= new Date(props.dateRange.start) && date <= new Date(props.dateRange.end);
 };
 
-const filteredProjects = computed(() => {
+// 业务筛选：项目类型 → Tab + 时间范围 → 验收状态；搜索交给内核
+const businessRows = computed(() => {
   let filtered = props.projects;
 
-  // 按项目类型过滤
   if (props.projectType !== '全部') {
-    filtered = filtered.filter(project =>
-      project.projectType === props.projectType
-    );
+    filtered = filtered.filter((project) => project.projectType === props.projectType);
   }
 
-  // 按Tab + 时间范围过滤
-  filtered = filtered.filter(project => {
+  filtered = filtered.filter((project) => {
     const planDate = currentTab.value === 'initial'
       ? project.planInitialDate
       : project.planFinalDate;
     return isDateInRange(planDate);
   });
 
-  // 按状态过滤：基于实际日期是否为空
   if (statusFilter.value !== 'all') {
-    filtered = filtered.filter(project => {
+    filtered = filtered.filter((project) => {
       const actualDate = currentTab.value === 'initial'
         ? project.actualInitialDate
         : project.actualFinalDate;
-
-      if (statusFilter.value === 'accepted') {
-        return !!actualDate;
-      } else if (statusFilter.value === 'pending') {
-        return !actualDate;
-      }
-      return true;
+      return statusFilter.value === 'accepted' ? !!actualDate : !actualDate;
     });
   }
-
-  // 按搜索关键词过滤
-  filtered = filterBySearchQuery(filtered, {
-    query: searchQuery.value,
-    mode: searchMode.value,
-    matchMode: searchMatchMode.value,
-    getBasicValues: getBasicSearchValues,
-    getGlobalValues: getGlobalSearchValues,
-  });
 
   return filtered;
 });
 
-const totalPages = computed(() => {
-  return Math.ceil(filteredProjects.value.length / pageSize.value);
+const {
+  visibleColumns,
+  selectableColumnLabels,
+  selectedColumnLabels,
+  searchQuery,
+  searchMode,
+  searchMatchMode,
+  handleSearch,
+  filteredRows,
+  paginatedRows,
+  pageSize,
+  currentPage,
+  totalPages,
+  prevPage,
+  nextPage,
+  handlePageSizeChange,
+  resetPage,
+} = useDataTable({
+  columns: allColumns,
+  rows: businessRows,
+  searchValues: {
+    getBasicValues: getBasicSearchValues,
+    getGlobalValues: getGlobalSearchValues,
+  },
+  initialSelectedLabels: DEFAULT_PROJECT_COLUMNS,
+  // 换台账后数据里没有的列要从勾选集合里清掉
+  pruneMissingColumns: true,
 });
 
-const paginatedProjects = computed(() => {
-  const start = (currentPage.value - 1) * pageSize.value;
-  const end = start + pageSize.value;
-  return filteredProjects.value.slice(start, end);
-});
-
-const getPlanDate = (project) => {
-  return currentTab.value === 'initial' ? project.planInitialDate : project.planFinalDate;
-};
-
-const getActualDate = (project) => {
-  return currentTab.value === 'initial' ? project.actualInitialDate || '-' : project.actualFinalDate || '-';
-};
-
-const parseLocalDate = (dateStr) => {
-  const parts = dateStr.split('-');
-  return new Date(+parts[0], parts[1] - 1, +parts[2]);
-};
-
-// 验收倒计时计算
-const getDaysRemaining = (planDate) => {
-  if (!planDate) return null;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const plan = parseLocalDate(planDate);
-  return Math.ceil((plan - today) / (1000 * 60 * 60 * 24));
-};
-
-const getCountdownColor = (days) => {
-  if (days === null) return '';
-  if (days <= 7) return 'red';
-  if (days <= 30) return 'yellow';
-  return 'green';
-};
-
-const getCountdownText = (days) => {
-  if (days === null) return '—';
-  if (days < 0) return `超期${Math.abs(days)}天`;
-  if (days === 0) return '今天';
-  return `${days}天`;
-};
-
-const getCountdownExport = (planDate, actualDate) => {
-  if (actualDate) return '已验收';
-  if (!planDate) return '—';
-  const days = getDaysRemaining(planDate);
-  return getCountdownText(days);
-};
-
-const getTrafficLight = (project) => {
-  const planDate = currentTab.value === 'initial'
-    ? project.planInitialDate : project.planFinalDate;
-  const actualDate = currentTab.value === 'initial'
-    ? project.actualInitialDate : project.actualFinalDate;
-
-  if (!planDate) return null;
-  if (actualDate) return { label: '已完成', cssClass: 'traffic-completed' };
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const plan = parseLocalDate(planDate);
-  const threeMonthsBefore = new Date(plan);
-  threeMonthsBefore.setMonth(threeMonthsBefore.getMonth() - 3);
-
-  if (today >= plan) return { label: '已滞后', cssClass: 'traffic-delayed' };
-  if (today >= threeMonthsBefore) return { label: '预警', cssClass: 'traffic-pending' };
-  return { label: '低风险', cssClass: 'traffic-completed' };
-};
+// 行模型：可见列 × 项目行 → 单元格（含链接 / 状态 / 金额 / 倒计时类型）
+const displayRows = computed(() => paginatedRows.value.map((project) => buildProjectRow(project, {
+  columns: visibleColumns.value,
+  tab: currentTab.value,
+})));
 
 const setTab = (tab) => {
   currentTab.value = tab;
-  currentPage.value = 1;
+  resetPage();
 };
 
 const setStatusFilter = (status) => {
   statusFilter.value = status;
-  currentPage.value = 1;
+  resetPage();
 };
 
-const handleSearch = () => {
-  currentPage.value = 1;
-};
-
-const handlePageSizeChange = () => {
-  currentPage.value = 1;
-};
-
-const prevPage = () => {
-  if (currentPage.value > 1) {
-    currentPage.value--;
-  }
-};
-
-const nextPage = () => {
-  if (currentPage.value < totalPages.value) {
-    currentPage.value++;
-  }
-};
-
-const getStatusClass = (status) => {
-  switch (status) {
-    case '已结算':
-      return 'status-completed';
-    case '待初验':
-    case '待终验':
-    case '待结算':
-      return 'status-pending';
-    default:
-      return '';
-  }
-};
-
-const formatCurrency = (value) => {
-  if (value === 0) return '0';
-  return new Intl.NumberFormat('zh-CN', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0
-  }).format(value);
-};
-
+/**
+ * 导出 Excel
+ * 导出列 = 当前可见的 Excel 列 + 当前 Tab 的两个日期列 + 初验/终验两个倒计时列
+ * （与既有导出结构保持一致，金额列导出为数值并按 #,##0.00 格式化）
+ */
 const exportToExcel = () => {
-  if (!filteredProjects.value.length) return;
+  if (!filteredRows.value.length) return;
 
-  // 构建导出数据：选中列 + 两个日期列 + 倒计时列
-  const tabLabel = currentTab.value === 'initial' ? '初验' : '终验';
-  const exportColumns = [
-    ...visibleColumns.value,
+  const tabLabel = tabLabelOf(currentTab.value);
+  const excelColumns = visibleColumns.value
+    .filter((col) => !col.fixed)
+    .map((col) => col.label);
+  const headers = [
+    ...excelColumns,
     `计划${tabLabel}时间`,
     `实际${tabLabel}时间`,
     '初验倒计时',
-    '终验倒计时'
+    '终验倒计时',
   ];
 
-  const exportRows = filteredProjects.value.map(project => {
+  const data = filteredRows.value.map((project) => {
     const row = {};
-    // 选中列
-    visibleColumns.value.forEach(col => {
-      const val = getColumnValue(project, col);
-      // 金额列导出为数字
-      if (isAmountColumn(col)) {
-        row[col] = parseFloat(val) || 0;
-      } else {
-        row[col] = val;
-      }
+    excelColumns.forEach((column) => {
+      const value = getColumnValue(project, column);
+      row[column] = isAmountColumn(column) ? (parseFloat(value) || 0) : value;
     });
-    // 日期列
-    row[`计划${tabLabel}时间`] = getPlanDate(project);
-    row[`实际${tabLabel}时间`] = getActualDate(project);
-    // 倒计时列（基于导出当天计算）
+
+    row[`计划${tabLabel}时间`] = currentTab.value === 'initial'
+      ? project.planInitialDate
+      : project.planFinalDate;
+    row[`实际${tabLabel}时间`] = currentTab.value === 'initial'
+      ? (project.actualInitialDate || '-')
+      : (project.actualFinalDate || '-');
     row['初验倒计时'] = getCountdownExport(project.planInitialDate, project.actualInitialDate);
     row['终验倒计时'] = getCountdownExport(project.planFinalDate, project.actualFinalDate);
-    return row;
+
+    return headers.map((header) => row[header] ?? '');
   });
 
-  const ws = XLSX.utils.json_to_sheet(exportRows, { header: exportColumns });
-  // 设置金额列格式
-  exportColumns.forEach((col, idx) => {
-    if (isAmountColumn(col)) {
-      const colLetter = XLSX.utils.encode_col(idx);
-      // 为每行设置数字格式
-      for (let r = 1; r <= exportRows.length; r++) {
-        const cellRef = colLetter + (r + 1);
-        if (ws[cellRef]) {
-          ws[cellRef].z = '#,##0.00';
-        }
-      }
-    }
+  downloadTable({
+    headers,
+    data,
+    sheetName: '项目明细',
+    fileName: `项目明细_${new Date().toISOString().slice(0, 10)}.xlsx`,
   });
-
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, '项目明细');
-  XLSX.writeFile(wb, `项目明细_${new Date().toISOString().slice(0, 10)}.xlsx`);
 };
 
 const openProjectDetail = (projectId) => {
+  // 由 ProjectDetailSection 决定后续行为
   emit('open-detail', projectId);
 };
 
-// 图片导出
+// 图片导出：直接引用组件内 DOM（原实现用 document.querySelector，多实例时不安全）
 const showImageExport = ref(false);
 const tableContainerRef = ref(null);
 const imageExportTitle = computed(() => {
-  const tabLabel = currentTab.value === 'initial' ? '初验' : '终验';
-  const dateRangeStr = props.dateRange?.start
-    ? `${props.dateRange.start?.slice(0, 7)}`
-    : '';
+  const tabLabel = tabLabelOf(currentTab.value);
+  const dateRangeStr = props.dateRange?.start ? `${props.dateRange.start?.slice(0, 7)}` : '';
   return `项目全景面板 — ${dateRangeStr} ${tabLabel}明细`;
 });
 
 const openImageExport = () => {
-  // 获取表格 DOM 引用
-  nextTick(() => {
-    tableContainerRef.value = document.querySelector('.table-container');
-  });
   showImageExport.value = true;
 };
 </script>
@@ -710,48 +506,48 @@ const openImageExport = () => {
 }
 
 /* 验收倒计时列 */
-.countdown-cell {
+:deep(.countdown-cell) {
   min-width: 130px;
   padding: 6px 10px;
 }
-.countdown {
+:deep(.countdown) {
   display: flex;
   flex-direction: column;
   gap: 3px;
 }
-.countdown-row {
+:deep(.countdown-row) {
   display: flex;
   align-items: center;
   gap: 5px;
   font-size: 12px;
   white-space: nowrap;
 }
-.countdown-row .phase {
+:deep(.countdown-row .phase) {
   color: #6b7280;
   min-width: 28px;
 }
-.countdown-row .dot {
+:deep(.countdown-row .dot) {
   width: 8px;
   height: 8px;
   border-radius: 50%;
   display: inline-block;
   flex-shrink: 0;
 }
-.countdown-row .dot.red { background: #ef4444; }
-.countdown-row .dot.yellow { background: #f59e0b; }
-.countdown-row .dot.green { background: #22c55e; }
-.countdown-row .dot.gray { background: #9ca3af; }
-.countdown-row .days {
+:deep(.countdown-row .dot.red) { background: #ef4444; }
+:deep(.countdown-row .dot.yellow) { background: #f59e0b; }
+:deep(.countdown-row .dot.green) { background: #22c55e; }
+:deep(.countdown-row .dot.gray) { background: #9ca3af; }
+:deep(.countdown-row .days) {
   font-weight: 600;
 }
-.countdown-row .days.red { color: #ef4444; }
-.countdown-row .days.yellow { color: #d97706; }
-.countdown-row .days.green { color: #16a34a; }
-.countdown-row .done {
+:deep(.countdown-row .days.red) { color: #ef4444; }
+:deep(.countdown-row .days.yellow) { color: #d97706; }
+:deep(.countdown-row .days.green) { color: #16a34a; }
+:deep(.countdown-row .done) {
   color: #9ca3af;
   font-size: 12px;
 }
-.countdown-row .na {
+:deep(.countdown-row .na) {
   color: #d1d5db;
   font-size: 12px;
 }
@@ -885,13 +681,14 @@ const openImageExport = () => {
   overflow-x: auto;
 }
 
-.table {
+/* 表格本体由 DataTable 内核渲染，样式经 :deep 穿透 */
+:deep(.table) {
   border-collapse: collapse;
   table-layout: fixed;
   margin: 0 auto;
 }
 
-.table th {
+:deep(.table th) {
   position: relative;
   text-align: center;
   padding: 0.75rem 1rem;
@@ -903,7 +700,7 @@ const openImageExport = () => {
   white-space: nowrap;
 }
 
-.resize-handle {
+:deep(.resize-handle) {
   position: absolute;
   right: 0;
   top: 0;
@@ -915,16 +712,16 @@ const openImageExport = () => {
   z-index: 1;
 }
 
-.resize-handle:hover {
+:deep(.resize-handle:hover) {
   background-color: #3b82f6;
 }
 
-.table.is-resizing {
+:deep(.table.is-resizing) {
   user-select: none;
   cursor: col-resize;
 }
 
-.table td {
+:deep(.table td) {
   padding: 0.75rem 1rem;
   font-size: 0.875rem;
   color: #374151;
@@ -936,7 +733,7 @@ const openImageExport = () => {
 }
 
 /* 项目编号列：允许换行 */
-.table td.col-project-code {
+:deep(.table td.col-project-code) {
   white-space: normal;
   word-break: break-word;
   max-width: 160px;
@@ -945,7 +742,7 @@ const openImageExport = () => {
 }
 
 /* 项目名称列：允许换行，不截断 */
-.table td.col-project-name {
+:deep(.table td.col-project-name) {
   white-space: normal;
   word-break: break-word;
   max-width: 320px;
@@ -953,34 +750,34 @@ const openImageExport = () => {
   text-overflow: clip;
 }
 
-.table tr:last-child td {
+:deep(.table tr:last-child td) {
   border-bottom: none;
 }
 
 /* 项目名称链接 */
-.project-name {
+:deep(.project-name) {
   color: #3b82f6;
   text-decoration: none;
   font-weight: 500;
 }
 
-.project-name:hover {
+:deep(.project-name:hover) {
   text-decoration: underline;
 }
 
 /* 金额对齐 */
-.amount-header {
+:deep(.amount-header) {
   text-align: right;
 }
 
-.amount {
+:deep(.amount) {
   text-align: right;
   font-weight: 600;
   color: #1f2937;
 }
 
 /* 状态标签 */
-.status-tag {
+:deep(.status-tag) {
   display: inline-flex;
   align-items: center;
   padding: 0.25rem 0.75rem;
@@ -990,24 +787,24 @@ const openImageExport = () => {
   white-space: nowrap;
 }
 
-.status-completed {
+:deep(.status-completed) {
   background-color: #d1fae5;
   color: #065f46;
 }
 
-.status-pending {
+:deep(.status-pending) {
   background-color: #fef3c7;
   color: #92400e;
 }
 
 /* 验收红绿灯标签 */
-.traffic-status-group {
+:deep(.traffic-status-group) {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
 }
 
-.traffic-tag {
+:deep(.traffic-tag) {
   display: inline-flex;
   align-items: center;
   padding: 0.25rem 0.5rem;
@@ -1017,35 +814,35 @@ const openImageExport = () => {
   white-space: nowrap;
 }
 
-.traffic-completed {
+:deep(.traffic-completed) {
   background-color: #d1fae5;
   color: #065f46;
 }
 
-.traffic-pending {
+:deep(.traffic-pending) {
   background-color: #fed7aa;
   color: #9a3412;
 }
 
-.traffic-delayed {
+:deep(.traffic-delayed) {
   background-color: #fee2e2;
   color: #991b1b;
 }
 
 /* 空状态 */
-.empty-state {
+:deep(.empty-state) {
   text-align: center;
   padding: 3rem;
 }
 
-.empty-icon {
+:deep(.empty-icon) {
   width: 32px;
   height: 32px;
   color: #9ca3af;
   margin-bottom: 1rem;
 }
 
-.empty-text {
+:deep(.empty-text) {
   color: #6b7280;
   font-size: 0.875rem;
 }

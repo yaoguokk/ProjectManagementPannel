@@ -8,7 +8,10 @@ import * as XLSX from 'xlsx';
 import {
   ACTIVE_COST_CATEGORIES,
   COST_CATEGORIES,
+  ContractRuleMode,
+  DEFAULT_CONTRACT_MATCH_FIELDS,
   OverBudgetFilter,
+  normalizeKeywords,
 } from '../constants/costCategory';
 import { buildCostColumns } from '../utils/costTableColumns';
 import { formatDepartment } from '../utils/departmentDisplay';
@@ -41,6 +44,55 @@ const buildContractTypeIndex = () => {
   );
 };
 
+/** 关键词规则允许匹配的字段；未配置时回退到默认三列 */
+const resolveMatchFields = (rule) => {
+  const fields = rule?.matchFields;
+  return Array.isArray(fields) && fields.length > 0 ? fields : DEFAULT_CONTRACT_MATCH_FIELDS;
+};
+
+/** 关键词归一化后仍有值才算规则生效；未生效时行为回到「仅按支出合同类型统计」 */
+const isRuleActive = (rule) => normalizeKeywords(rule?.keywords).length > 0;
+
+/**
+ * 判断单条合同是否命中关键词规则（命中 = 任一匹配列包含任一关键词）
+ * 多列之间取「或」关系：合同名称 / 事项名称 / 合同内容简述 任一命中即算命中
+ * 刻意不使用正则，规避用户输入造成的非法正则
+ * @param {Object} contract - cleanContractData 的产物
+ * @param {Object} rule     - { keywords, matchFields }
+ * @returns {boolean}
+ */
+export const matchesContractRule = (contract, rule) => {
+  if (!isRuleActive(rule)) return false;
+
+  const keywords = normalizeKeywords(rule.keywords).map((keyword) => keyword.toLowerCase());
+  return resolveMatchFields(rule).some((field) => {
+    const text = String(contract?.[field] ?? '').toLowerCase();
+    return text !== '' && keywords.some((keyword) => text.includes(keyword));
+  });
+};
+
+/**
+ * 按规则模式决定合同是否计入该分类
+ * exclude：命中关键词的剔除（默认口径）；include：只保留命中关键词的
+ */
+const shouldKeepContract = (contract, rule) => {
+  if (!isRuleActive(rule)) return true;
+
+  const matched = matchesContractRule(contract, rule);
+  return rule.mode === ContractRuleMode.INCLUDE ? matched : !matched;
+};
+
+/** 分类口径统计（供界面展示「剔除 N 行 / M 元」） */
+const createRuleStats = (rule) => ({
+  total: 0,
+  kept: 0,
+  keptAmount: 0,
+  excluded: 0,
+  excludedAmount: 0,
+  mode: rule?.mode === ContractRuleMode.INCLUDE ? ContractRuleMode.INCLUDE : ContractRuleMode.EXCLUDE,
+  keywords: normalizeKeywords(rule?.keywords),
+});
+
 /** 取成本行中某个分类的数据，缺省返回 0 值对象 */
 const pickCategory = (row, key) => {
   return row.categories.find((item) => item.key === key) || { budget: 0, actual: 0, diff: 0 };
@@ -50,18 +102,39 @@ const pickCategory = (row, key) => {
  * 按项目编号构建支出合同索引（一次遍历，同时产出金额与明细）
  * 未纳入成本分类的支出合同类型（如「项目管理」「其他」）会被忽略
  * @param {Array} contracts - cleanContractData 的产物
- * @returns {{ amountMap: Map, detailMap: Map }}
+ * 命中分类后先按分类的关键词规则二次判定，被剔除的合同不计金额、不进明细，
+ * 保证图表、明细表、超支下钻与导出四处口径一致
+ * @param {Array}  contracts     - cleanContractData 的产物
+ * @param {Object} contractRules - { [分类key]: { mode, keywords, matchFields } }，缺省表示不做关键词过滤
+ * @returns {{ amountMap: Map, detailMap: Map, ruleStats: Object }}
  *   amountMap: Map<项目编号, { [分类key]: 金额 }>
  *   detailMap: Map<项目编号, { [分类key]: 合同明细数组 }>
+ *   ruleStats: { [分类key]: { total, kept, excluded, excludedAmount, mode, keywords } }
  */
-export const buildContractIndex = (contracts = []) => {
+export const buildContractIndex = (contracts = [], contractRules = {}) => {
   const typeIndex = buildContractTypeIndex();
   const amountMap = new Map();
   const detailMap = new Map();
+  // 只对配置了规则的分类统计口径，未配置的分类不产生额外开销
+  const ruleStats = {};
 
   contracts.forEach((contract) => {
     const categoryKey = typeIndex.get(contract.contractType);
     if (!categoryKey || !contract.projectCode) return;
+
+    const rule = contractRules?.[categoryKey];
+    if (rule) {
+      const stats = ruleStats[categoryKey] || (ruleStats[categoryKey] = createRuleStats(rule));
+      stats.total += 1;
+
+      if (!shouldKeepContract(contract, rule)) {
+        stats.excluded += 1;
+        stats.excludedAmount += contract.amount || 0;
+        return;
+      }
+      stats.kept += 1;
+      stats.keptAmount += contract.amount || 0;
+    }
 
     const bucket = amountMap.get(contract.projectCode) || {};
     bucket[categoryKey] = (bucket[categoryKey] || 0) + (contract.amount || 0);
@@ -73,16 +146,18 @@ export const buildContractIndex = (contracts = []) => {
     detailMap.set(contract.projectCode, detailBucket);
   });
 
-  return { amountMap, detailMap };
+  return { amountMap, detailMap, ruleStats };
 };
 
 /**
  * 按项目编号聚合支出合同金额
  * 等价于 buildContractIndex 的金额视图，保留原有签名以兼容既有调用与测试
- * @param {Array} contracts - cleanContractData 的产物
+ * @param {Array}  contracts     - cleanContractData 的产物
+ * @param {Object} contractRules - 同 buildContractIndex，缺省表示不做关键词过滤
  * @returns {Map<string, Object>} Map<项目编号, { [分类key]: 金额 }>
  */
-export const buildContractCostMap = (contracts = []) => buildContractIndex(contracts).amountMap;
+export const buildContractCostMap = (contracts = [], contractRules = {}) =>
+  buildContractIndex(contracts, contractRules).amountMap;
 
 /** 合同明细按事项金额倒序，便于第一眼看到主要支出 */
 const sortContractsByAmount = (contracts = []) =>
@@ -139,6 +214,42 @@ const buildCostRow = (project, contractMap, contractDetailMap = new Map()) => {
   };
 };
 
+/** 项目类型空值统一为 '-'，与明细表「项目类型」列、导出口径一致 */
+const BLANK_TYPE_LABEL = '-';
+
+/**
+ * 按台账「项目类型」聚合超支情况（纯函数，便于单测）
+ * 口径与 summarize 其余字段完全一致：超支行取 hasOverBudget，超支金额只累加正差额
+ * 排序刻意稳定：超支项目数降序 → 超支金额降序 → 类型名中文自然序，避免筛选变化时横轴抖动
+ * @param {Array} rows 成本明细行
+ * @returns {Array<{label: string, total: number, overProjectCount: number, overAmount: number, overRate: number}>}
+ */
+const summarizeByProjectType = (rows = []) => {
+  const buckets = new Map();
+
+  rows.forEach((row) => {
+    const label = row.projectTypeLabel || BLANK_TYPE_LABEL;
+    const bucket = buckets.get(label) || { label, total: 0, overProjectCount: 0, overAmount: 0 };
+
+    bucket.total += 1;
+    if (row.hasOverBudget) {
+      bucket.overProjectCount += 1;
+      bucket.overAmount += Math.max(0, row.diffTotal);
+    }
+    buckets.set(label, bucket);
+  });
+
+  return [...buckets.values()]
+    .map((bucket) => ({
+      ...bucket,
+      overRate: bucket.total > 0 ? Math.round((bucket.overProjectCount / bucket.total) * 100) : 0,
+    }))
+    .sort((a, b) =>
+      b.overProjectCount - a.overProjectCount
+      || b.overAmount - a.overAmount
+      || a.label.localeCompare(b.label, 'zh-CN', { numeric: true }));
+};
+
 /** 汇总所有成本行 */
 const summarize = (rows) => {
   const categoryTotals = ACTIVE_COST_CATEGORIES.map((category) => {
@@ -166,6 +277,8 @@ const summarize = (rows) => {
     overProjectCount: overRows.length,
     overAmount: rows.reduce((sum, row) => sum + Math.max(0, row.diffTotal), 0),
     overRate: rows.length > 0 ? Math.round((overRows.length / rows.length) * 100) : 0,
+    // 按台账「项目类型」聚合的超支情况，供 E 区域超支分布图消费
+    typeTotals: summarizeByProjectType(rows),
     categoryTotals,
   };
 };
@@ -175,18 +288,19 @@ const summarize = (rows) => {
  * @param {Array}  projects  - 台账项目（含立项成本列）
  * @param {Array}  contracts - 支出合同事项
  * @param {Object} filters   - { dateRange: { start, end }, projectType }
- * @returns {{ rows: Array, summary: Object }}
+ * @param {Object} options   - { contractRules } 分类关键词规则，缺省表示不做关键词过滤
+ * @returns {{ rows: Array, summary: Object, ruleStats: Object }}
  */
-export const calculateCostAnalysis = (projects = [], contracts = [], filters = {}) => {
+export const calculateCostAnalysis = (projects = [], contracts = [], filters = {}, options = {}) => {
   const { dateRange = {}, projectType = '全部' } = filters;
-  const { amountMap, detailMap } = buildContractIndex(contracts);
+  const { amountMap, detailMap, ruleStats } = buildContractIndex(contracts, options.contractRules || {});
 
   const rows = projects
     .filter((project) => projectType === '全部' || project.projectType === projectType)
     .filter((project) => isDateInRange(project.planFinalDate, dateRange))
     .map((project) => buildCostRow(project, amountMap, detailMap));
 
-  return { rows, summary: summarize(rows) };
+  return { rows, summary: summarize(rows), ruleStats };
 };
 
 /** 按超支状态筛选明细行 */

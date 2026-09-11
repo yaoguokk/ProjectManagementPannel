@@ -15,9 +15,11 @@
 import { formatDepartment } from './departmentDisplay';
 import { ColumnFilterKind } from './columnFilters';
 
+// 千行级下每个金额单元格都会调用，Intl 实例化开销明显，故复用模块级 formatter
+const AMOUNT_FORMATTER = new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 0 });
+
 /** 金额格式化：整数千分位 */
-export const formatAmount = (value) =>
-  new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 0 }).format(value || 0);
+export const formatAmount = (value) => AMOUNT_FORMATTER.format(value || 0);
 
 /** 差额格式化：正数补 `+` 号，便于一眼识别超支 */
 export const formatDiff = (value) => {

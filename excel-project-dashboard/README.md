@@ -4,6 +4,7 @@
 
 ## 项目特性
 
+- **多页面路由** - `#/overview` 项目验收完成率概览（含数据导入）/ `#/projects` 项目明细 / `#/cost` 成本管控；hash 模式（单文件产物可 `file://` 直接打开），筛选条件同步到 URL query 可分享可刷新
 - **双通道上传** - 经营项目和自筹项目分别上传；任一入口可一次选择 1-3 个 Excel，按文件名关键词自动分发到对应入口
 - **数据清洗** - 自动过滤无效行、格式化日期/金额、万元→元转换
 - **KPI 概览** - 初验/终验完成率环形图，按项目类型细分统计
@@ -33,6 +34,24 @@ npm run build      # 构建
 npm test           # 测试
 ```
 
+## 页面路由（方案 B：vue-router + hash 模式）
+
+产物是单文件 HTML，用户常双击 `file://` 打开，因此采用 hash 模式（`#/cost`），
+history 模式在 `file://` 下刷新/直达会 404。
+
+| 路由 | 视图 | 组合内容 |
+|------|------|---------|
+| `#/overview`（默认） | `views/OverviewView.vue` | A 数据导入 + B 筛选 + C KPI |
+| `#/projects` | `views/ProjectsView.vue` | B 筛选 + D 项目明细表 |
+| `#/cost` | `views/CostView.vue` | B 筛选 + E 成本管控（口径条 + 超支分布图 + 明细表） |
+
+- 数据导入（A 区域）归属概览页，不单独占导航项；超支分布图只属于 E 区域，仅在 `#/cost` 展示。
+- 视图只拼装既有 `components/sections/*` 容器，不复制业务逻辑（区域元数据走 `getSection(id)`）。
+- `router/index.js` 的 `NAV_ITEMS` 是「顶部导航 / 路由注册 / 面包屑标题」的唯一来源，新增页面只加一条。
+- 筛选条件（项目类型 / 时间范围）与 URL query 双向同步（`utils/filterQuery.js` + `composables/useFilterQuerySync.js`）：
+  只写非默认值、非法参数回退默认值、用 `replace` 写入不污染历史。
+- 整批上传成功后自动跳转到概览页（跳转发生在 `UploadArea` 的 `batch-done` 之后；逐个文件成功就跳会卸载页面、丢掉同批后续文件的事件）。
+
 ## 页面布局
 
 ```
@@ -55,8 +74,10 @@ npm test           # 测试
 
 ```
 src/
+├── views/                 # 页面视图：Overview（含数据导入）/ Projects / Cost（只拼装区域容器）
+├── router/                # 路由表 + NAV_ITEMS（导航 / 路由 / 标题同源）
 ├── components/
-│   ├── Dashboard/         # 主页面，A~E 区域布局枢纽
+│   ├── Dashboard/         # 整页 A~E 五区域入口（历史布局，当前路由未使用）
 │   ├── KpiCards/          # KPI 指标卡片（环形进度图 + 细分表）
 │   ├── ProjectTable/      # D 区域：项目表格 + 导出
 │   ├── CostControl/       # E 区域：成本构成图 / 明细表 / 表格栅格 / 超支详情弹窗
@@ -68,6 +89,7 @@ src/
 ├── composables/
 │   ├── useProjectData.js  # 筛选状态 + KPI 计算 + 数据过滤
 │   ├── useColumnResize.js # D/E 共用：表头拖拽调整列宽
+│   ├── useFilterQuerySync.js # 筛选条件 ↔ URL query 双向同步
 │   └── useToast.js        # Toast 提示
 ├── constants/
 │   ├── projectStatus.js   # 项目状态/类型常量（中文值）
@@ -76,6 +98,7 @@ src/
 │   ├── excelParser.js     # SheetJS 解析（支持 skipRows）
 │   ├── dataCleaner.js     # 精确列名映射 + 过滤 + 格式化
 │   ├── tableSearch.js     # D/E 共用搜索语义（范围 / 匹配方式 / 取值口径）
+│   ├── filterQuery.js     # 筛选条件 ↔ URL query 纯函数（编码 / 解码 / 等价判断）
 │   ├── costTableColumns.js# E 区域列模型 + 单元格构造（含默认列宽 + 筛选取值）
 │   ├── columnFilters.js   # E 区域表头筛选 / 排序纯逻辑（计数、占比、数值条件）
 │   ├── departmentDisplay.js# 业务部所展示口径（全部 / 仅部门）

@@ -275,6 +275,19 @@ describe('Data Cleaner Utilities', () => {
       expect(item.handler).toBe('李四');
     });
 
+    test('应保留「合同内容简述」供成本关键词规则匹配', () => {
+      const [item] = cleanContractData([
+        makeContractRow({ '合同内容简述': '  专利、软著申请代理服务  ' }),
+      ]);
+
+      expect(item.contractSummary).toBe('专利、软著申请代理服务');
+    });
+
+    test('缺少「合同内容简述」列时应回退为空串', () => {
+      const [item] = cleanContractData([makeContractRow()]);
+      expect(item.contractSummary).toBe('');
+    });
+
     test('空输入应返回空数组', () => {
       expect(cleanContractData([])).toEqual([]);
       expect(cleanContractData()).toEqual([]);

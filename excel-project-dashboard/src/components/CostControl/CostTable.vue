@@ -86,21 +86,42 @@
     <div class="ml-[calc(50%_-_50vw)] w-screen border-y border-gray-200 bg-white">
       <div class="p-6">
         <div ref="tableContainerRef" class="overflow-x-auto">
-          <CostTableGrid
+          <DataTable
             :columns="visibleColumns"
             :rows="displayRows"
             :is-empty="filteredRows.length === 0"
+            empty-text="当前筛选条件下暂无成本数据"
             :filters="columnFilters"
             :sort="sortState"
             :open-filter-key="openFilterKey"
             :filter-options="openFilterOptions"
             :filter-total="openFilterSourceRows.length"
-            @open-detail="openDetail"
             @toggle-filter="toggleFilterKey"
             @close-filter="closeFilter"
             @update:filter="setColumnFilter"
             @update:sort="setColumnSort"
-          />
+          >
+            <!-- 业务单元格：内核只认 cell.type，具体长什么样由区域决定 -->
+            <template #cell-status="{ row }">
+              <span
+                class="inline-flex px-2 py-1 rounded-full text-xs font-semibold"
+                :class="row.hasOverBudget ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'"
+              >
+                {{ row.hasOverBudget ? '超支' : '正常' }}
+              </span>
+            </template>
+            <template #cell-action="{ row }">
+              <button
+                class="inline-flex h-7 items-center rounded border px-2.5 text-xs font-medium transition-colors"
+                :class="row.hasOverBudget
+                  ? 'border-red-300 text-red-600 hover:bg-red-100'
+                  : 'border-gray-300 text-gray-600 hover:bg-gray-100'"
+                @click="openDetail(row)"
+              >
+                详情
+              </button>
+            </template>
+          </DataTable>
         </div>
       </div>
     </div>
@@ -123,7 +144,7 @@
         <button
           class="h-9 w-9 rounded border border-gray-300 text-gray-600 disabled:opacity-50"
           :disabled="currentPage === 1"
-          @click="currentPage--"
+          @click="prevPage"
         >
           &lt;
         </button>
@@ -131,7 +152,7 @@
         <button
           class="h-9 w-9 rounded border border-gray-300 text-gray-600 disabled:opacity-50"
           :disabled="currentPage >= totalPages"
-          @click="currentPage++"
+          @click="nextPage"
         >
           &gt;
         </button>
@@ -155,23 +176,24 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue';
+/**
+ * E 区域成本明细表
+ *
+ * 表格状态（搜索 / 表头筛选 / 排序 / 分页 / 列显隐）全部来自 useDataTable 内核，
+ * 渲染交给 DataTable；本组件只声明「列定义 + 行映射 + 业务单元格插槽 + 导出」。
+ */
+import { computed, ref, watch } from 'vue';
 import { filterCostRows, downloadCostAnalysis } from '../../data/costData';
 import { OverBudgetFilter } from '../../constants/costCategory';
+import { useDataTable } from '../../composables/useDataTable';
+import { createRowModel } from '../../utils/tableModel';
+import DataTable from '../common/DataTable.vue';
 import CostDetailModal from './CostDetailModal.vue';
-import CostTableGrid from './CostTableGrid.vue';
 import ImageExportModal from '../common/ImageExportModal.vue';
 import ColumnSelector from '../common/ColumnSelector.vue';
 import TableSearchBox from '../common/TableSearchBox.vue';
-import { filterBySearchQuery } from '../../utils/tableSearch';
 import { buildCostColumns, buildCostCell } from '../../utils/costTableColumns';
 import { DepartmentDisplay, DEPARTMENT_DISPLAY_OPTIONS } from '../../utils/departmentDisplay';
-import {
-  buildValueOptions,
-  countActiveColumnFilters,
-  filterRowsByColumnFilters,
-  sortRowsByColumn,
-} from '../../utils/columnFilters';
 
 const props = defineProps({
   // calculateCostAnalysis 的 rows 结果
@@ -182,20 +204,12 @@ const props = defineProps({
 });
 
 const overFilter = ref(OverBudgetFilter.ALL);
-const pageSize = ref(10);
-const currentPage = ref(1);
-
-// 搜索（语义与 D 区域一致，规则见 utils/tableSearch）
-const searchQuery = ref('');
-const searchMode = ref('basic');
-const searchMatchMode = ref('any');
+// 业务部所展示方式：默认全部展示，保持原有行为
+const departmentMode = ref(DepartmentDisplay.FULL);
 
 // 详情弹窗：保存当前下钻的项目行
 const detailVisible = ref(false);
 const detailRow = ref(null);
-
-// 业务部所展示方式：默认全部展示，保持原有行为
-const departmentMode = ref(DepartmentDisplay.FULL);
 
 const filterOptions = [
   { label: '全部', value: OverBudgetFilter.ALL },
@@ -205,27 +219,6 @@ const filterOptions = [
 
 // 分类列由数据驱动，新增成本分类后表格自动扩展
 const allColumns = computed(() => buildCostColumns(props.rows));
-
-const allColumnLabels = computed(() => allColumns.value.map((col) => col.label));
-
-// 列设置选中的列名（默认全选），与 D 区域共用 ColumnSelector
-const selectedColumnLabels = ref([]);
-const columnsInitialized = ref(false);
-
-// 首次拿到数据时才按「全部列」初始化，之后完全由用户选择决定。
-// 保留已消失的列名不清理，避免筛选后数据暂时为空导致用户的选择被重置。
-watch(() => props.rows.length, (rowCount) => {
-  if (columnsInitialized.value || rowCount === 0) return;
-  selectedColumnLabels.value = [...allColumnLabels.value];
-  columnsInitialized.value = true;
-}, { immediate: true });
-
-// 展示列始终按自然列序输出，避免取消再勾选后列跑到末尾
-const visibleColumns = computed(() => {
-  if (!columnsInitialized.value) return allColumns.value;
-  const selected = new Set(selectedColumnLabels.value);
-  return allColumns.value.filter((col) => selected.has(col.label));
-});
 
 // 搜索取值口径
 const getBasicSearchValues = (row) => [
@@ -250,107 +243,44 @@ const getGlobalSearchValues = (row) => [
   ...row.categories.map((item) => item.label),
 ];
 
-// 表头筛选只作用于「已通过超支筛选与关键词搜索」的数据
-const searchedRows = computed(() =>
-  filterBySearchQuery(filterCostRows(props.rows, overFilter.value), {
-    query: searchQuery.value,
-    mode: searchMode.value,
-    matchMode: searchMatchMode.value,
+const {
+  visibleColumns,
+  allColumnLabels,
+  selectedColumnLabels,
+  searchQuery,
+  searchMode,
+  searchMatchMode,
+  handleSearch,
+  columnFilters,
+  sortState,
+  openFilterKey,
+  activeFilterCount,
+  openFilterOptions,
+  openFilterSourceRows,
+  setColumnFilter,
+  setColumnSort,
+  toggleFilterKey,
+  closeFilter,
+  clearHeaderFilters,
+  pageSize,
+  currentPage,
+  totalPages,
+  paginatedRows,
+  prevPage,
+  nextPage,
+  filteredRows,
+} = useDataTable({
+  columns: allColumns,
+  // 业务筛选（超支）在链路之外，交给内核做搜索 → 列筛选 → 排序 → 分页
+  rows: () => filterCostRows(props.rows, overFilter.value),
+  searchValues: {
     getBasicValues: getBasicSearchValues,
     getGlobalValues: getGlobalSearchValues,
-  })
-);
-
-// 表头筛选状态：按列 key 存放，未启用时该列不存在
-const columnFilters = ref({});
-// 排序状态：{ key, order }，order 为空表示未排序
-const sortState = ref({ key: '', order: '' });
-// 当前展开的筛选下拉（同时只开一个）
-const openFilterKey = ref('');
-
-const activeFilterCount = computed(() => countActiveColumnFilters(columnFilters.value));
-
-const openFilterColumn = computed(() =>
-  allColumns.value.find((col) => col.key === openFilterKey.value) || null);
-
-// 下拉里的计数/占比以「其他列筛选之后」的数据为基数（Excel 语义），
-// 且必须排除自身列，否则勾掉一个值后就再也勾不回来。
-const openFilterSourceRows = computed(() =>
-  filterRowsByColumnFilters(
-    searchedRows.value,
-    columnFilters.value,
-    allColumns.value,
-    openFilterKey.value
-  )
-);
-
-const openFilterOptions = computed(() => (openFilterColumn.value
-  ? buildValueOptions(openFilterSourceRows.value, openFilterColumn.value)
-  : []));
-
-// 筛选（跨列 AND）→ 排序；分页与导出的都是这条链路的结果
-const filteredRows = computed(() => {
-  const rows = filterRowsByColumnFilters(
-    searchedRows.value,
-    columnFilters.value,
-    allColumns.value
-  );
-  const sortColumn = allColumns.value.find((col) => col.key === sortState.value.key);
-  return sortRowsByColumn(rows, sortColumn, sortState.value.order);
-});
-
-const totalPages = computed(() =>
-  Math.max(1, Math.ceil(filteredRows.value.length / pageSize.value))
-);
-
-const paginatedRows = computed(() => {
-  const start = (currentPage.value - 1) * pageSize.value;
-  return filteredRows.value.slice(start, start + pageSize.value);
-});
-
-// 筛选条件或数据变化时回到第一页，避免停留在越界页码
-watch([filteredRows, pageSize], () => {
-  currentPage.value = 1;
+  },
 });
 
 const setOverFilter = (value) => {
   overFilter.value = value;
-};
-
-const handleSearch = () => {
-  currentPage.value = 1;
-};
-
-/**
- * 写入某列筛选
- *
- * 即使条件暂时不生效（如数值框里还是半截内容）也照样存下来：
- * 一旦删掉，面板会收到 filter=undefined 并把用户正在输入的字符清空。
- * "是否生效"统一由 isColumnFilterActive 判断，与存储解耦。
- */
-const setColumnFilter = (key, filter) => {
-  columnFilters.value = { ...columnFilters.value, [key]: filter };
-  currentPage.value = 1;
-};
-
-const setColumnSort = (key, order) => {
-  sortState.value = order ? { key, order } : { key: '', order: '' };
-  currentPage.value = 1;
-};
-
-const toggleFilterKey = (key) => {
-  openFilterKey.value = openFilterKey.value === key ? '' : key;
-};
-
-const closeFilter = () => {
-  openFilterKey.value = '';
-};
-
-const clearHeaderFilters = () => {
-  columnFilters.value = {};
-  sortState.value = { key: '', order: '' };
-  closeFilter();
-  currentPage.value = 1;
 };
 
 // 数据换了（重新上传台账）：旧筛选引用的取值可能已不存在，会让表格看起来"空了"，直接重置
@@ -358,15 +288,15 @@ watch(() => props.rows, () => {
   clearHeaderFilters();
 });
 
-// 行 × 可见列的单元格模型，使表格渲染与可见列解耦
-const displayRows = computed(() =>
-  paginatedRows.value.map((row) => ({
-    row,
-    cells: visibleColumns.value.map((col) =>
-      buildCostCell(row, col, { departmentMode: departmentMode.value })
-    ),
-  }))
-);
+// 行 × 可见列的单元格模型，使表格渲染与列模型解耦
+const displayRows = computed(() => paginatedRows.value.map((row) => createRowModel(
+  row,
+  visibleColumns.value.map((col) => buildCostCell(row, col, { departmentMode: departmentMode.value })),
+  {
+    key: row.id,
+    rowClass: row.hasOverBudget ? 'bg-red-50' : 'hover:bg-gray-50',
+  },
+)));
 
 // 图片导出：复用 D 区域的公共弹窗组件，仅需提供表格 DOM 与标题
 const IMAGE_FILE_NAME = '项目全景面板_成本管控';
@@ -388,7 +318,7 @@ const handleExport = () => {
     filteredRows.value,
     undefined,
     visibleColumns.value.map((col) => col.label),
-    { departmentMode: departmentMode.value }
+    { departmentMode: departmentMode.value },
   );
 };
 

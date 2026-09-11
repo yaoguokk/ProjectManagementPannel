@@ -161,6 +161,17 @@ describe('E 区域表头筛选下拉', () => {
     expect(wrapper.text()).toContain('清除表头筛选（1）');
   });
 
+  test('面板重置表头继承的 nowrap，数值列控件才不会被裁掉', async () => {
+    const wrapper = mountTable();
+    await openFilter(wrapper, '差额合计');
+
+    const panel = panelOf(wrapper);
+    // 面板挂在 <th class="whitespace-nowrap"> 内：不显式重置，select 与输入框会并排撑出面板被 overflow-hidden 裁掉
+    expect(panel.classes()).toContain('whitespace-normal');
+    expect(panel.findAll('select')).toHaveLength(1);
+    expect(panel.findAll('input[type="text"]')).toHaveLength(1);
+  });
+
   test('数值列走条件筛选：大于 0 只剩超支行', async () => {
     const wrapper = mountTable();
     await openFilter(wrapper, '差额合计');
@@ -229,5 +240,28 @@ describe('E 区域表头筛选清除', () => {
     expect(totalCount(wrapper)).toBe(4);
     expect(wrapper.findAll('.column-filter-panel')).toHaveLength(0);
     expect(wrapper.text()).not.toContain('清除表头筛选');
+  });
+});
+
+describe('E 区域行渲染（DataTable 行模型与插槽）', () => {
+  test('超支行整行标红，非超支行不带高亮类', () => {
+    const wrapper = mountTable();
+    const rows = wrapper.findAll('tbody tr');
+
+    expect(rows[0].classes()).toContain('bg-red-50'); // 智慧城市项目：超支
+    expect(rows[1].classes()).toContain('hover:bg-gray-50'); // 数据中台项目：正常
+  });
+
+  test('点击行尾「详情」打开下钻弹窗（cell-action 插槽）', async () => {
+    const wrapper = mount(CostTable, { props: { rows: ROWS }, attachTo: document.body });
+
+    const detailButtons = wrapper.findAll('tbody button').filter((button) => button.text() === '详情');
+    expect(detailButtons).toHaveLength(4);
+
+    await detailButtons[0].trigger('click');
+    // 弹窗通过 Teleport 渲染到 body
+    expect(document.body.textContent).toContain('超支科目');
+
+    wrapper.unmount();
   });
 });

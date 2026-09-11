@@ -1,70 +1,33 @@
-import { ref, computed } from 'vue';
-import { calculateKpiData } from '../data/projectData';
-import { ProjectType } from '../constants/projectStatus';
+/**
+ * 项目数据访问的薄适配层
+ *
+ * 真实状态与派生计算已收敛到 Pinia 的 dataStore（单一数据源），
+ * 这里只做「store → 组合式函数」的形态转换，保持既有调用签名不变，
+ * 老代码（Dashboard / 测试）无需一次性改写即可平滑迁移。
+ *
+ * 新代码建议直接 `useDataStore()`（可配合 storeToRefs），
+ * 需要组合式函数风格时再走这里。
+ */
+import { storeToRefs } from 'pinia';
+import { useDataStore } from '../stores/dataStore';
 
-export const createDefaultFilters = () => {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), 0, 1);
-  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  const formatDate = (date) => {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
-  };
-
-  return {
-    dateRange: { start: formatDate(start), end: formatDate(end), type: 'month' },
-    projectType: ProjectType.ALL
-  };
-};
+// 保持既有导出路径可用（原先定义在本文件，现抽到 utils 以避免与 store 循环依赖）
+export { createDefaultFilters } from '../utils/projectFilters';
 
 /**
  * 项目数据管理组合式函数
- * 封装项目数据的过滤、计算和状态管理逻辑
+ * @returns {{ filters, kpiData, projects, updateFilters, applyFilters }}
+ *   filters/projects/kpiData 均为只读引用（刷新请走 updateFilters / setDataset）
  */
 export const useProjectData = () => {
-  // 过滤条件
-  const filters = ref(createDefaultFilters());
-
-  // 项目数据
-  const projects = ref([]);
-
-  // KPI数据计算
-  const kpiData = computed(() => {
-    return calculateKpiData(projects.value, filters.value);
-  });
-
-  /**
-   * 更新过滤条件
-   * @param {Object} newFilters - 新的过滤条件
-   */
-  const updateFilters = (newFilters) => {
-    filters.value = { ...filters.value, ...newFilters };
-  };
-
-  /**
-   * 应用过滤条件获取项目列表（仅按项目类型过滤，日期范围只影响KPI）
-   * @returns {Array} 过滤后的项目列表
-   */
-  const applyFilters = () => {
-    let filtered = projects.value;
-
-    // 按项目类型过滤
-    if (filters.value.projectType !== ProjectType.ALL) {
-      filtered = filtered.filter(project =>
-        project.projectType === filters.value.projectType
-      );
-    }
-
-    return filtered;
-  };
+  const store = useDataStore();
+  const { filters, kpiData, projects } = storeToRefs(store);
 
   return {
     filters,
     kpiData,
     projects,
-    updateFilters,
-    applyFilters
+    updateFilters: store.updateFilters,
+    applyFilters: store.applyFilters,
   };
 };

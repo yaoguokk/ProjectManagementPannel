@@ -2,6 +2,91 @@
 
 ---
 
+## [2026-09-11] 页面职责归位：数据导入并入概览、超支分布图只留 E 区域
+
+**总目标**：概览页不再出现「超支项目分布」图（该图属于 E 区域成本管控）；顶部导航取消「数据导入」独立项，把数据导入（A 区域）并入概览页。
+
+**状态**：✅ 完成
+
+**干到哪了**：
+- [x] `views/OverviewView.vue`：改为「A 数据导入 + B 筛选 + C KPI」，删除 `CostChart`（图只在 E 区域出现）。
+- [x] 删除 `views/DataView.vue`（内容与概览页内的 A 区域重复）。
+- [x] `router/index.js`：`NAV_ITEMS` 收缩为 3 项（`/overview`、`/projects`、`/cost`）；`ROUTE_TITLES` 去掉 `data`；`#/data` 经通配路由重定向到概览，旧书签不 404。
+- [x] `tests/router.test.js`：断言改为 3 个页面、断言 `/data` 不再注册、`/data` 与未匹配路径都回到概览。
+- [x] 文档：CLAUDE.md 新增改进 #6、更新「路由与视图」表与结论；README 更新特性条、页面路由表与结构树。
+
+**验证证据**：
+- `npm run test:run`：295/295 通过（27 个测试文件）。
+- `npm run build`：构建通过（713 modules，单文件 `dist/index.html` 1,823.28 kB）。
+- 真机核对（Chrome，1440px）：导航 3 项（项目验收完成率概览 / 项目明细 / 成本管控）；概览页命中「数据导入 / 数据筛选 / KPI 概览」三区且**不含**「超支项目分布」；在概览页一次上传 3 个真实台账后 store 为 `{business:1023,'self-funded':29,contract:1863}` 且停留在 `#/overview`；`#/cost` 有「超支项目分布」图且表格 10 行；访问旧书签 `#/data` 落到 `#/overview`；console error = 0。
+- 本次改动文件 `read_lints` 0 报错；临时验证脚本已删除。
+
+**边界**：
+- 只做页面归属与导航结构调整，不改任何计算口径、清洗规则、区域容器内部行为。
+- `UploadSection` 的「整批上传后跳转概览」保留（上传区就在概览页内，属于兜底；同时继续防住 Bug #6 的时序问题）。
+- `DataView.vue` 已删除；如需再拆出独立导入页，新建视图并在 `NAV_ITEMS` 加一条即可。
+
+---
+
+## [2026-09-11] 修复：一次上传多个台账只导入了第一个（成本管控页一直空）
+
+**总目标**：修掉「在数据导入页一次选 3 个文件（经营台账 / 自筹台账 / 支出合同），只有第一个进入系统，成本管控页始终没有数据」的回归。
+
+**状态**：✅ 完成
+
+**干到哪了**：
+- [x] 复现（真实文件 + Chrome）：上传后 `store.datasets` 只有 `{ business: 1023 }`，`self-funded` / `contract` 缺失；E 区域因此显示「请先上传【支出合同事项】台账」。
+- [x] 定位根因：上一轮把「导入后跳转概览」做在**每个文件**的 `file-uploaded` 里。第一份台账成功即 `router.push` → `DataView` 卸载；而 `UploadArea` 是串行异步解析，后续文件的 `emit('file-uploaded')` 在已卸载实例上被 Vue 丢弃（`emit` 在 `isUnmounted` 时直接 return），`dataStore.setDataset` 从未执行。
+- [x] `UploadArea.vue`：`handleFile` 返回是否成功；`handleFiles` 统计 `successCount` 并在**整批结束后**发一次 `batch-done`（载荷 `{ total, successCount }`）。
+- [x] `UploadSection.vue`：移除 `handleFileUploaded` 里的跳转，改为 `@batch-done="handleBatchDone"`，仅当 `successCount > 0` 时 `router.push({ name: 'overview' })`。
+- [x] 数据层交叉验证：真实三份台账 `calculateCostAnalysis` 产出 **206 行**（口径本身没问题，问题纯在 UI 事件时序）。
+- [x] 回归测试：`tests/uploadArea.test.js` 追加 3 项（整批只发一次 batch-done / 单文件也以 batch-done 收尾 / 整批拒绝不发 batch-done）；新增 `tests/uploadSection.test.js` 3 项（逐个 `file-uploaded` 不跳转、`batch-done` 才跳转、`successCount = 0` 不跳转）。
+- [x] 文档：CLAUDE.md 追加 Bug #6 并修正「上传后跳转」的两处描述；README「页面路由」同步为「整批上传成功后跳转」。
+
+**验证证据**：
+- `npm run test:run`：295/295 通过（27 个测试文件，较上一轮 289 增 6）。
+- `npm run build`：构建通过（713 modules，单文件 `dist/index.html` 1,823.50 kB）。
+- 真机复跑（Chrome + 真实三份台账）：上传后 store 为 `{ business: 1023, 'self-funded': 29, contract: 1863 }`；`/cost` 表格 18 列、首页 10 行、图表概览「统计项目 206 个 · 超支项目 5 个（2%）· 超支金额 ¥190,761」；`/projects` 初验 tab「共 2 条」、终验 tab「共 206 条」；console error = 0。
+- 本次改动文件 `read_lints` 0 报错；复现脚本与临时 vitest 配置已删除。
+
+**边界**：
+- 只调整「上传 → 跳转」的时序，不改上传校验、文件名分发规则、清洗口径与各区域计算。
+- `batch-done` 是新增事件，`ACCEPT_CONFIG` 注册表未动；新增数据集仍只需加注册表一条。
+- 跳转条件为「整批至少 1 个成功」，整批失败时停留在导入页以便看错误提示。
+
+---
+
+## [2026-09-11] 多页面路由（方案 B：vue-router + hash 模式）+ 4 个视图
+
+**总目标**：把原来「一页纵向堆叠 A~E 五区域」拆成 4 个可直达、可分享、可刷新的页面（概览 / 项目明细 / 成本管控 / 数据导入），用 vue-router 驱动；筛选条件（项目类型 / 时间范围）同步到 URL query，刷新与分享链接都能保持选中状态。
+
+**状态**：✅ 完成
+
+**干到哪了**：
+- [x] 新增 `src/router/index.js`：hash 模式（单文件产物 `file://` 下刷新/直达不 404）；`NAV_ITEMS` 作为「顶部导航 / 路由注册 / 面包屑标题」的唯一来源，`ROUTE_TITLES` 提供中文标题；`/` 与未匹配路径都重定向到 `/overview`。
+- [x] `src/main.js` 挂载 pinia + router。
+- [x] 新增 4 个视图：`views/OverviewView.vue`（B 筛选 + C KPI + E 超支分布图）、`views/ProjectsView.vue`（B + D）、`views/CostView.vue`（B + E）、`views/DataView.vue`（A）。视图只拼装既有 `components/sections/*` 容器与 `CostChart`；区域徽章 / 标题 / 配色走 `constants/sections.js` 新增的 `getSection(id)`，不复制文案与业务逻辑。
+- [x] `App.vue` 改为布局层：顶部导航（来自 `NAV_ITEMS`）+ `Breadcrumbs` + `RouterView`，并把原 1400px 居中容器收进布局，D/E 表格通铺的祖先结构保持不变。
+- [x] 新增 `src/utils/filterQuery.js`（纯函数 `encodeFilterQuery` / `decodeFilterQuery` / `filtersEqual` / `queryEquals`）与 `src/composables/useFilterQuerySync.js`（双向同步）。只写非默认值（默认状态 URL 干净）、非法参数回退默认值、用 `replace` 写入不污染历史；两个方向先做等价判断打断循环。
+- [x] `components/common/Breadcrumbs.vue` 末级标题改为跟随当前路由（`ROUTE_TITLES[route.name]`）。
+- [x] `components/sections/UploadSection.vue` 导入成功后 `router.push({ name: 'overview' })`。
+- [x] `constants/sections.js` 新增 `getSection(id)` 供视图复用区域元数据。
+- [x] 测试：新增 `tests/filterQuery.test.js`（9 项）与 `tests/router.test.js`（4 项），`tests/sections.test.js` 追加 `getSection` 断言（+1）。
+- [x] README 新增「页面路由」章节并更新项目结构；CLAUDE.md 新增「路由与视图」章节 + 改进 #5 + 关键文件速查。
+
+**验证证据**：
+- `npm run test:run`：289/289 通过（26 个测试文件，较上一轮 275 增 14）。
+- `npm run build`：构建通过（713 modules；单文件产物 `dist/index.html` 1,823.35 kB，gzip 606.31 kB）。
+- 本次改动的 11 个文件 `read_lints` 0 报错。
+
+**边界**：
+- `Dashboard/Dashboard.vue`（整页 5 区域）保留但当前路由不再使用，作为历史入口与对照。
+- 只换页面编排，不改 `data/*.js` 计算口径、`stores/dataStore.js`、各区域容器内部行为。
+- 筛选状态仍只存内存；URL query 只承载「项目类型 + 时间范围（start / end / range）」四项，区域局部状态（分页、列显隐、搜索）不写 URL。
+- 未新增依赖：`vue-router` 早已在 `package.json` 中。
+
+---
+
 ## [2026-09-10] 修正 E 区域「项目类型」取值口径：改取台账原值
 
 **总目标**：E 区域成本明细表与超支详情弹窗的「项目类型」不再显示内部类别（经营项目 / 自筹项目），改取台账原始「项目类型」列（工程集成类 / 产品销售类 / 研究咨询类 / 技术研究类 等），与 D 区域同名列口径一致；经营 / 自筹只保留在 B 区域顶部筛选。
