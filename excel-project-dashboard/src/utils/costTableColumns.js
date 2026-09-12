@@ -14,6 +14,8 @@
  */
 import { formatDepartment } from './departmentDisplay';
 import { ColumnFilterKind } from './columnFilters';
+import { isAmountColumn } from './tableModel';
+import { extractColumnNames, getColumnValue, PROJECT_COLUMN_WIDTHS } from './projectTableColumns';
 
 // 千行级下每个金额单元格都会调用，Intl 实例化开销明显，故复用模块级 formatter
 const AMOUNT_FORMATTER = new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 0 });
@@ -46,8 +48,8 @@ const HEAD_COLUMNS = [
   { key: 'planFinalDate', label: '计划终验时间', width: 140, filter: ColumnFilterKind.VALUE, getFilterValue: (row) => row.planFinalDate },
 ];
 
-/** 分类列之后的固定列 */
-const TAIL_COLUMNS = [
+/** 分类列之后的合计 / 状态列 */
+const SUMMARY_COLUMNS = [
   { key: 'budgetTotal', label: '立项合计', align: 'right', width: 120, filter: ColumnFilterKind.NUMBER, getFilterValue: (row) => row.budgetTotal ?? 0 },
   { key: 'actualTotal', label: '实际合计', align: 'right', width: 120, filter: ColumnFilterKind.NUMBER, getFilterValue: (row) => row.actualTotal ?? 0 },
   { key: 'diffTotal', label: '差额合计', align: 'right', width: 120, filter: ColumnFilterKind.NUMBER, getFilterValue: (row) => row.diffTotal ?? 0 },
@@ -60,8 +62,10 @@ const TAIL_COLUMNS = [
   },
   // 筛选取值与单元格展示一致（超支 / 正常），避免"看到超支却筛不出来"
   { key: 'status', label: '状态', width: 100, filter: ColumnFilterKind.VALUE, getFilterValue: (row) => (row.hasOverBudget ? '超支' : '正常') },
-  { key: 'action', label: '操作', width: 90, filter: ColumnFilterKind.NONE },
 ];
+
+/** 末列：操作（不参与表头筛选与导出，始终固定在最后） */
+const ACTION_COLUMN = { key: 'action', label: '操作', width: 90, filter: ColumnFilterKind.NONE };
 
 /** 取某行指定分类的数据，缺失时回退为零值，避免空分类导致渲染报错 */
 const getCategoryItem = (row, categoryKey) =>
@@ -86,14 +90,73 @@ const buildCategoryColumns = (categories = []) =>
   })));
 
 /**
+ * 成本行自身的派生字段：它们不是「项目清单」的列，需从台账列候选里排除。
+ * 台账程序字段（id / projectCode / status …）由 utils/projectTableColumns 的 PROGRAM_FIELDS 排除。
+ */
+export const COST_ROW_FIELDS = [
+  'categories', 'budgetTotal', 'actualTotal', 'diffTotal', 'overCategories',
+  'categoryOver', 'overallOver', 'hasOverBudget',
+  'projectTypeLabel', 'planFinalDate', 'actualFinalDate',
+];
+
+/** 项目清单列的 key 前缀：与成本列 key 天然隔离，避免同名冲突 */
+const LEDGER_KEY_PREFIX = 'ledger:';
+
+/**
+ * 「项目清单」里的其余台账列（默认不勾选，可在列设置里启用）
+ * 取值口径与 D 区域一致：优先 Excel 原列名，缺失时回退程序字段；
+ * 金额列按 D 区域同款关键词规则判定（isAmountColumn），展示为千分位、筛选走数值条件。
+ * @param {Array} rows       成本明细行（已透传台账原始列）
+ * @param {Set}   usedLabels 成本列已占用的列名，避免列设置里出现重名项
+ */
+const buildLedgerColumns = (rows = [], usedLabels = new Set()) =>
+  extractColumnNames(rows)
+    .filter((name) => !COST_ROW_FIELDS.includes(name) && !usedLabels.has(name))
+    .map((name) => {
+      const amount = isAmountColumn(name);
+      return {
+        key: `${LEDGER_KEY_PREFIX}${name}`,
+        label: name,
+        ledger: true,
+        ledgerName: name,
+        align: amount ? 'right' : '',
+        width: PROJECT_COLUMN_WIDTHS[name] ?? FALLBACK_COLUMN_WIDTH,
+        filter: amount ? ColumnFilterKind.NUMBER : ColumnFilterKind.VALUE,
+        // 与单元格展示同源：金额按数值筛选，其余按台账原值
+        getFilterValue: (row) => {
+          const raw = getColumnValue(row, name);
+          return amount ? (Number(raw) || 0) : raw;
+        },
+      };
+    });
+
+/**
  * 生成完整列定义
+ *
+ * = 固定列 + 动态分类列 + 合计/状态列 + 「项目清单」其余台账列 + 操作列
+ * 项目清单列只进列设置（默认不勾选），保证首次进入看到的仍是原来的成本列。
  * @param {Array} rows 成本明细行，取首行的 categories 作为列模板
  */
-export const buildCostColumns = (rows = []) => [
-  ...HEAD_COLUMNS,
-  ...buildCategoryColumns(rows[0]?.categories),
-  ...TAIL_COLUMNS,
-];
+export const buildCostColumns = (rows = []) => {
+  const categories = buildCategoryColumns(rows[0]?.categories);
+  const usedLabels = new Set(
+    [...HEAD_COLUMNS, ...categories, ...SUMMARY_COLUMNS, ACTION_COLUMN].map((col) => col.label)
+  );
+
+  return [
+    ...HEAD_COLUMNS,
+    ...categories,
+    ...SUMMARY_COLUMNS,
+    ...buildLedgerColumns(rows, usedLabels),
+    ACTION_COLUMN,
+  ];
+};
+
+/**
+ * 默认展示的列（列设置里的「默认」与首次进入）= 成本列，不含「项目清单」列
+ */
+export const defaultCostColumnLabels = (columns = []) =>
+  columns.filter((col) => !col.ledger).map((col) => col.label);
 
 /** 固定列中需要「超支标红」的列 */
 const OVER_STYLE = 'text-right font-semibold text-red-600';
@@ -123,6 +186,18 @@ export const buildCostCell = (row, col, options = {}) => {
       text: formatAmount(item[col.kind]),
       cellClass: 'text-right text-gray-700',
     };
+  }
+
+  // 「项目清单」列：直接取台账原值，金额列按金额口径展示
+  if (col.ledger) {
+    const raw = getColumnValue(row, col.ledgerName);
+
+    if (isAmountColumn(col.ledgerName)) {
+      return { key: col.key, text: formatAmount(Number(raw) || 0), cellClass: 'text-right text-gray-700' };
+    }
+
+    const text = raw === '' || raw === null || raw === undefined ? '-' : String(raw);
+    return { key: col.key, text, title: text, cellClass: 'text-gray-600' };
   }
 
   switch (col.key) {

@@ -1,9 +1,11 @@
 import {
   buildCostColumns,
   buildCostCell,
+  defaultCostColumnLabels,
   formatAmount,
   formatDiff,
 } from '../src/utils/costTableColumns';
+import { ColumnFilterKind } from '../src/utils/columnFilters';
 import { DepartmentDisplay } from '../src/utils/departmentDisplay';
 
 const OVER_STYLE = 'text-right font-semibold text-red-600';
@@ -131,5 +133,81 @@ describe('costTableColumns', () => {
     expect(formatDiff(300)).toBe('+300');
     expect(formatDiff(-300)).toBe('-300');
     expect(formatDiff(0)).toBe('0');
+  });
+});
+
+describe('costTableColumns > 项目清单列', () => {
+  const withLedgerFields = (overrides = {}) => makeRow({
+    '项目状态': '待终验',
+    '立项收入(元)': '1234567',
+    '项目责任部门': '研发中心',
+    ...overrides,
+  });
+
+  const columnOf = (row, label) => buildCostColumns([row]).find((col) => col.label === label);
+
+  test('台账其余列进入列定义，成本行派生字段不进入', () => {
+    const labels = buildCostColumns([withLedgerFields()]).map((col) => col.label);
+
+    expect(labels).toContain('项目状态');
+    expect(labels).toContain('立项收入(元)');
+    expect(labels).toContain('项目责任部门');
+
+    // 成本行自身的派生字段不是「项目清单」列
+    ['categories', 'budgetTotal', 'actualTotal', 'hasOverBudget', 'projectTypeLabel'].forEach((field) => {
+      expect(labels).not.toContain(field);
+    });
+  });
+
+  test('与成本列同名的台账列不重复出现', () => {
+    const labels = buildCostColumns([withLedgerFields({ '项目类型': '研究咨询类', '项目编号': 'PRJ-001' })])
+      .map((col) => col.label);
+
+    expect(labels.filter((label) => label === '项目类型')).toHaveLength(1);
+    expect(labels.filter((label) => label === '项目编号')).toHaveLength(1);
+  });
+
+  test('项目清单列排在「操作」之前，默认勾选里不含它们', () => {
+    const columns = buildCostColumns([withLedgerFields()]);
+
+    expect(columns[columns.length - 1].label).toBe('操作');
+    expect(columns[columns.length - 2].ledger).toBe(true);
+
+    const defaults = defaultCostColumnLabels(columns);
+    expect(defaults).toContain('项目编号');
+    expect(defaults).toContain('状态');
+    expect(defaults).toContain('操作');
+    expect(defaults).not.toContain('项目状态');
+    expect(defaults).not.toContain('立项收入(元)');
+  });
+
+  test('单元格：文本取台账原值、空值占位、金额千分位', () => {
+    const row = withLedgerFields({ '项目责任部门': '' });
+
+    expect(buildCostCell(row, columnOf(row, '项目状态')).text).toBe('待终验');
+    expect(buildCostCell(row, columnOf(row, '项目责任部门')).text).toBe('-');
+    expect(buildCostCell(row, columnOf(row, '立项收入(元)'))).toMatchObject({
+      text: '1,234,567',
+      cellClass: 'text-right text-gray-700',
+    });
+  });
+
+  test('表头筛选：文本按台账原值、金额走数值条件', () => {
+    const row = withLedgerFields();
+
+    const status = columnOf(row, '项目状态');
+    expect(status.filter).toBe(ColumnFilterKind.VALUE);
+    expect(status.getFilterValue(row)).toBe('待终验');
+
+    const budget = columnOf(row, '立项收入(元)');
+    expect(budget.filter).toBe(ColumnFilterKind.NUMBER);
+    expect(budget.getFilterValue(row)).toBe(1234567);
+  });
+
+  test('列宽沿用项目明细的列宽表，未知列走兜底宽度', () => {
+    const row = withLedgerFields({ '项目名称': '智慧城市项目' });
+    expect(columnOf(row, '项目名称').width).toBeGreaterThan(0);
+    expect(columnOf(row, '项目状态').width).toBeGreaterThan(0);
+    expect(columnOf(row, '项目责任部门').width).toBeGreaterThan(0);
   });
 });

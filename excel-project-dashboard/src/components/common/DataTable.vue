@@ -100,7 +100,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useColumnResize } from '../../composables/useColumnResize';
 import { ColumnFilterKind, SortOrder, isColumnFilterActive } from '../../utils/columnFilters';
 import { FALLBACK_COLUMN_WIDTH, alignClass, resolveColumnWidth } from '../../utils/tableModel';
@@ -178,6 +178,8 @@ const emit = defineEmits(['open-detail', 'toggle-filter', 'close-filter', 'updat
 
 // 下拉锚点：打开时记录触发按钮的视口坐标，供 fixed 定位
 const anchorRect = ref(null);
+// 触发按钮元素：滚动 / 缩放时重新取坐标，让面板跟随而不是被关掉
+const anchorEl = ref(null);
 
 // 必须显式声明 filter 才渲染筛选漏斗：D 区域的项目明细表没有表头筛选，不该出现入口
 const isFilterable = (col) => Boolean(col.filter) && col.filter !== ColumnFilterKind.NONE;
@@ -190,10 +192,55 @@ const sortMark = (col) => {
 };
 
 const handleToggleFilter = (event, key) => {
-  // 收起时不重算锚点，交给父组件决定开关
-  anchorRect.value = props.openFilterKey === key ? null : event.currentTarget.getBoundingClientRect();
+  if (props.openFilterKey === key) {
+    // 收起时不重算锚点，交给父组件决定开关
+    anchorEl.value = null;
+    anchorRect.value = null;
+  } else {
+    anchorEl.value = event.currentTarget;
+    anchorRect.value = anchorEl.value.getBoundingClientRect();
+  }
   emit('toggle-filter', key);
 };
+
+/** 触发按钮是否仍在视口内（滚出视口后 fixed 坐标已无意义） */
+const isRectInViewport = (rect) => {
+  const width = window.innerWidth || 0;
+  const height = window.innerHeight || 0;
+  return rect.bottom > 0 && rect.top < height && rect.right > 0 && rect.left < width;
+};
+
+/**
+ * 滚动 / 窗口缩放时让面板跟随触发按钮重定位，而不是直接收起。
+ * 此前「滚动即关闭」有个副作用：筛选后行数骤减（尤其清空成 0 行）会使页面高度
+ * 塌缩、scrollTop 被浏览器钳制回弹，由此产生的 scroll 事件会把正在操作的面板关掉。
+ */
+const syncAnchorRect = () => {
+  if (!anchorEl.value) return;
+  const rect = anchorEl.value.getBoundingClientRect();
+  if (!isRectInViewport(rect)) {
+    anchorEl.value = null;
+    anchorRect.value = null;
+    emit('close-filter');
+    return;
+  }
+  anchorRect.value = rect;
+};
+
+const handleViewportChange = () => {
+  if (props.openFilterKey) syncAnchorRect();
+};
+
+onMounted(() => {
+  // capture：scroll 不冒泡，但捕获阶段任意容器（页面 / 表格）的滚动都能到达 window
+  window.addEventListener('scroll', handleViewportChange, true);
+  window.addEventListener('resize', handleViewportChange);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('scroll', handleViewportChange, true);
+  window.removeEventListener('resize', handleViewportChange);
+});
 
 const columnKeys = computed(() => props.columns.map((col) => col.key));
 

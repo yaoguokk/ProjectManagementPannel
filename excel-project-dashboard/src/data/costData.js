@@ -13,8 +13,10 @@ import {
   OverBudgetFilter,
   normalizeKeywords,
 } from '../constants/costCategory';
-import { buildCostColumns } from '../utils/costTableColumns';
+import { buildCostColumns, defaultCostColumnLabels } from '../utils/costTableColumns';
 import { formatDepartment } from '../utils/departmentDisplay';
+import { getColumnValue } from '../utils/projectTableColumns';
+import { isAmountColumn } from '../utils/tableModel';
 
 /**
  * 将 YYYY-MM-DD 解析为本地时间戳
@@ -190,6 +192,9 @@ const buildCostRow = (project, contractMap, contractDetailMap = new Map()) => {
   const overCategories = categories.filter((item) => item.over).map((item) => item.label);
 
   return {
+    // 透传台账原始列（清洗后的全部 Excel 列），供 E 区域列设置里的「项目清单」列使用；
+    // 下面的派生字段在同名时覆盖台账值，保持成本口径不受影响
+    ...project,
     id: project.id,
     projectCode: project.projectCode,
     projectName: project.projectName,
@@ -358,20 +363,45 @@ const resolveCategoryExportColumn = (label, categories = []) => {
 };
 
 /**
+ * 「项目清单」列（ledger）的导出取值：列名 → { header, get }
+ * 台账原始列的取值口径与 D 区域一致（getColumnValue），金额列导出为数值便于继续计算
+ */
+const resolveLedgerExportColumn = (label, ledgerLookup) => {
+  const sourceName = ledgerLookup.get(label);
+  if (!sourceName) return null;
+
+  return {
+    header: label,
+    get: (row) => {
+      const raw = getColumnValue(row, sourceName);
+      if (isAmountColumn(sourceName)) return Number(raw) || 0;
+      return raw === undefined || raw === null ? '' : raw;
+    },
+  };
+};
+
+/**
  * 构建导出用的表头与数据（纯函数，便于单测）
  * 导出列与表格可见列保持一致，实现「所见即所得」
  * @param {Array}  rows         成本明细行
- * @param {Array}  columnLabels 需要导出的列名；缺省时导出全部列
+ * @param {Array}  columnLabels 需要导出的列名；缺省时导出表格默认展示的列（不含「项目清单」列）
  * @param {Object} options      导出选项，如 { departmentMode } 控制业务部所口径
  */
 export const buildCostExportTable = (rows = [], columnLabels, options = {}) => {
   const categories = rows[0]?.categories || [];
+  const allColumns = buildCostColumns(rows);
+  const ledgerLookup = new Map(
+    allColumns.filter((col) => col.ledger).map((col) => [col.label, col.ledgerName])
+  );
+
   const labels = columnLabels?.length
     ? columnLabels
-    : buildCostColumns(rows).map((col) => col.label);
+    : defaultCostColumnLabels(allColumns);
 
   const columns = labels
-    .map((label) => FIXED_EXPORT_COLUMNS[label] || resolveCategoryExportColumn(label, categories))
+    .map((label) => FIXED_EXPORT_COLUMNS[label]
+      || resolveCategoryExportColumn(label, categories)
+      || resolveLedgerExportColumn(label, ledgerLookup))
     .filter(Boolean);
 
   return {

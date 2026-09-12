@@ -11,7 +11,7 @@
           <RouterLink
             v-for="item in NAV_ITEMS"
             :key="item.name"
-            :to="{ name: item.name }"
+            :to="navLocation(item, route.query)"
             class="app-nav-link"
             active-class="app-nav-link-active"
           >
@@ -33,14 +33,19 @@
 </template>
 
 <script setup>
-import { RouterLink, RouterView } from 'vue-router';
+import { RouterLink, RouterView, useRoute } from 'vue-router';
 import Toast from './components/common/Toast.vue';
 import Breadcrumbs from './components/common/Breadcrumbs.vue';
 import { NAV_ITEMS, ROUTE_TITLES } from './router';
+import { navLocation } from './utils/filterQuery';
 import { useFilterQuerySync } from './composables/useFilterQuerySync';
+
+const route = useRoute();
 
 // 筛选条件 ↔ URL query 双向同步：布局层调用一次，所有视图共享
 useFilterQuerySync();
+
+// 导航跳转统一带 query（navLocation）：否则切页会把筛选条件重置成默认值
 </script>
 
 <style scoped>

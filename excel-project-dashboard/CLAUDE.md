@@ -49,6 +49,8 @@
 - **筛选条件 ↔ URL query**：`composables/useFilterQuerySync.js`（App.vue 调用一次）做双向同步，
   纯函数在 `utils/filterQuery.js`。只写非默认值（默认状态 URL 干净），非法参数回退默认值，
   用 `replace` 写入不污染浏览器历史；可分享、可刷新保持。
+- **⚠️ 站内跳转必须带 query**：统一走 `filterQuery.js` 的 `navLocation(target, route.query)`（顶部导航、上传完成后的跳转）。
+  筛选以 URL query 为唯一来源，跳转不带 query 就等于把筛选重置成默认值（切页后自定义时间范围丢失，见改进 #9）。
 - **面包屑路由驱动**：`common/Breadcrumbs.vue` 末级标题取 `ROUTE_TITLES[route.name]`。
 - **上传后跳转**：`sections/UploadSection.vue` 只在**整批**导入成功后（`UploadArea` 的 `batch-done`）才 `router.push({ name: 'overview' })`；
   上传区现在就在概览页内，该跳转是「确保回到概览看结果」的兜底。
@@ -340,6 +342,19 @@ ProjectTable.vue (src/components/ProjectTable/ProjectTable.vue)
   「单文件同样以 batch-done 收尾」「整批拒绝不发 batch-done」；新增 [uploadSection.test.js](tests/uploadSection.test.js) 3 项
   （逐个 `file-uploaded` 不跳转 / `batch-done` 才跳转 / `successCount = 0` 不跳转）
 
+### Bug #7: 表头筛选「空选」后面板自动退出 （2026-09-11 修复）
+- **现象**: E 区域（含项目清单列）表头筛选里把勾选清空（显式空选）后，筛选面板会立刻自动关闭，
+  用户想改选别的值必须重新点开漏斗
+- **根因**: [ColumnFilterDropdown.vue](src/components/common/ColumnFilterDropdown.vue) 自己监听了
+  window 的 `scroll`（capture）/ `resize`，**任何滚动都直接收起面板**（初衷是滚动后 fixed 坐标失效）。
+  空选 → 表格行数骤减 → 页面高度塌缩、scrollTop 被浏览器钳制回弹 → 产生 scroll 事件 → 面板被关掉
+- **修复**: 「滚动即关闭」改为「**跟随触发按钮重定位**」：
+  [DataTable.vue](src/components/common/DataTable.vue) 持有触发按钮元素，滚动 / 缩放时重新取
+  `getBoundingClientRect` 更新锚点（面板跟随移动）；只有触发按钮**滚出视口**才收起面板。
+  面板自身只保留「点击外部」与「Escape」两种关闭方式
+- **回归测试**: [costTableHeaderFilter.test.js](tests/costTableHeaderFilter.test.js) 新增
+  「空选后面板不退出：滚动 / 缩放只重定位，触发按钮滚出视口才收起」
+
 ---
 
 ## ⚠️ 重要：这是中文数据项目！
@@ -576,4 +591,65 @@ npm run dev
 
 ---
 
-**最后更新**: 2026-09-11（页面职责归位：数据导入并入概览、超支分布图只留 E 区域）
+### 改进 #7: E 区域列设置纳入「项目清单」全部列（默认仍为成本列） （2026-09-11）
+- **需求**: 参考 D 区域的列设置，E 区域的可选列要包含项目清单（台账）里的其他列，但默认展示保持原来的成本列
+- **改动**:
+  - [costTableColumns.js](src/utils/costTableColumns.js)：新增 `buildLedgerColumns`（台账其余列，标 `ledger: true` + `ledgerName`）、
+    `defaultCostColumnLabels`（默认勾选 = 非台账列）、`COST_ROW_FIELDS`（排除成本行派生字段，避免 `budgetTotal` 之类混进列设置）；
+    台账列排在「操作」之前，金额列用 `isAmountColumn` 判定（右对齐 + 数值筛选），单元格用 `getColumnValue` 取台账原值
+  - [costData.js](src/data/costData.js)：`buildCostRow` 透传台账原始列（`...project`，派生字段随后覆盖同名值，口径不变）；
+    导出链路新增台账列解析（勾选后导出，未勾选不导出；缺省导出仍是默认列）
+  - [useDataTable.js](src/composables/useDataTable.js)：`initialSelectedLabels` 支持传函数（按当前列模型延迟求值）
+  - [CostTable.vue](src/components/CostControl/CostTable.vue)：首次进入默认勾选成本列，列设置「默认」按钮同样回到成本列
+- **测试**: 新增 [costTableColumnSettings.test.js](tests/costTableColumnSettings.test.js)（5 条，走组件交互）；
+  `costTableColumns` 追加 6 条、`costData` 追加 3 条、`useDataTable` 追加 1 条，全量 **310 条通过**；构建通过
+- **真机核对（真实三份台账）**: 列设置 114 项（18 成本列 + 96 台账列），默认勾选 18；勾「单位」后表头增至 19–20 列且首行显示真实公司名，
+  缺该列的行显示 `-`；台账列同样有筛选漏斗；点「默认」回到 18 列；console error = 0
+
+---
+
+### 改进 #8: E 区域全局搜索扩到全部字段 （2026-09-11）
+- **需求**: 列设置已能勾到台账列，但全局搜索仍只覆盖原来那组成本业务字段（可见却搜不到），需要扩到全部字段
+- **改动**: [CostTable.vue](src/components/CostControl/CostTable.vue) 的 `getGlobalSearchValues` 改为
+  `[...pickAllValues(row, ['id', 'categories']), 超支/正常, overCategories, ...成本分类名]`
+  - 复用 [tableSearch.js](src/utils/tableSearch.js) 的 `pickAllValues`（与 D 区域同一套语义）
+  - 排除 `id`（无意义）与 `categories`（内含合同明细对象，字符串化成噪音）；成本分类名单独以标签纳入
+  - 成本口径文案（超支 / 正常、超支成本类型）不是行的原始字段，但用户会照着表格搜，故显式保留
+  - 同步更新搜索帮助 tooltip 的 `global-fields-hint`
+- **测试**: 新增 [costTableSearch.test.js](tests/costTableSearch.test.js)（5 条：基础搜索不含台账列、全局覆盖台账列、
+  保留超支 / 正常与分类名、保留内部口径与合计、或 / 与匹配），全量 **315 条通过**；构建通过
+- **真机核对（真实三份台账）**: 用台账专有列「立项提交时间」的首行值搜索——基础搜索 0 行（表格空态）、
+  全局搜索 58 行；全局「已结算」79 行、「超支」5 行（与图表概览的「超支项目 5 个」一致）、「项目分包费」206 行；清空后回到 206 行；console error = 0
+
+---
+
+### 改进 #9: 筛选条件跨页保持（站内跳转带 query） （2026-09-11）
+- **问题**: 自定义「时间范围」后切换页面，筛选被重置成默认（年初至本月）
+- **根因**: 筛选条件以 URL query 为唯一来源（`useFilterQuerySync` 监听 `route.query` 写回 store），
+  而顶部导航用 `:to="{ name: item.name }"` 生成跳转目标 → 切页时 query 被清空 → 空 query 解码成默认值写回 store。
+  `UploadSection` 的「整批上传后跳转概览」是同一类隐患（会清掉 query）
+- **修复**:
+  - [filterQuery.js](src/utils/filterQuery.js) 新增 `navLocation(target, query)`，作为站内跳转的统一出口
+  - [App.vue](src/App.vue) 导航与 [UploadSection.vue](src/components/sections/UploadSection.vue) 的跳转都改为 `navLocation(..., route.query)`
+- **测试**: 新增 [appNavigation.test.js](tests/appNavigation.test.js)（4 条：URL 恢复筛选、切页保留、多次切页保留、默认筛选不进 URL）；
+  `filterQuery` 追加 1 条 `navLocation` 用例，全量 **320 条通过**；构建通过
+- **真机核对（Chrome）**: 设置自定义 2026-02-01 ~ 2026-05-31 后——切到项目明细 / 成本管控 / 概览 URL 与输入框都保留该区间；
+  刷新页面保留；上传三份台账（触发整批跳转）后保留，且 E 区域按该区间过滤为「统计项目 86 个」（默认区间是 206）；console error = 0
+
+---
+
+### 改进 #10: 时间范围「年初至本月 / 自定义」切换不丢自定义日期 （2026-09-11）
+- **需求**: 在「年初至本月」和「自定义」两个按钮之间切换时，不要丢掉用户填过的自定义日期
+- **问题**: 切到「年初至本月」会把输入框改成年初~本月末，切回「自定义」时输入框沿用被改过的值（用户填的日期被覆盖）
+- **修复**: [DateRangeFilter.vue](src/components/filters/DateRangeFilter.vue) 新增 `customRange` 记忆：
+  仅在**从自定义切出时**留存当前填写值（避免被「年初至本月」覆盖）；切回自定义时还原，
+  从未填过则沿用当前值（不置空）；`syncFromProps` 遇到外部带入的自定义区间时也同步记忆，
+  因此切页重建组件后「切走再切回」同样能还原
+- **测试**: 新增 [dateRangeFilter.test.js](tests/dateRangeFilter.test.js)（5 条：年初至本月口径不变、首次点自定义不置空、
+  切走再切回还原、外部带入区间切走再切回还原、连续点「年初至本月」不覆盖记忆），全量 **325 条通过**；构建通过
+- **真机核对（Chrome）**: 填 `2026-02-01 ~ 2026-05-31` → 切「年初至本月」→ 切回「自定义」，输入框还原为原区间；
+  切到「成本管控」后重复同样操作同样还原；URL 保持 `?start=2026-02-01&end=2026-05-31&range=custom`；console error = 0
+
+---
+
+**最后更新**: 2026-09-11（时间范围两按钮切换不丢自定义日期）

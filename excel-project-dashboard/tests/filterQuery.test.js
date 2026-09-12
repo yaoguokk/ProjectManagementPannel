@@ -10,6 +10,7 @@ import {
   decodeFilterQuery,
   encodeFilterQuery,
   filtersEqual,
+  navLocation,
   queryEquals,
 } from '../src/utils/filterQuery';
 import { DateRangeType, ProjectType } from '../src/constants/projectStatus';
@@ -93,6 +94,20 @@ describe('筛选条件 ↔ URL query', () => {
     };
 
     expect(decodeFilterQuery(encodeFilterQuery(source, DEFAULT_FILTERS), DEFAULT_FILTERS)).toEqual(source);
+  });
+
+  test('navLocation 保留筛选 query（站内跳转不重置筛选）', () => {
+    expect(navLocation({ name: 'cost' }, { start: '2026-02-01' })).toEqual({
+      name: 'cost',
+      query: { start: '2026-02-01' },
+    });
+    // 无 query 时补空对象，避免 vue-router 目标里出现 undefined query
+    expect(navLocation({ name: 'cost' }, undefined)).toEqual({ name: 'cost', query: {} });
+
+    // 不修改传入的 target
+    const target = { name: 'cost' };
+    navLocation(target, { start: '2026-02-01' });
+    expect(target).toEqual({ name: 'cost' });
   });
 
   test('filtersEqual / queryEquals 能打断同步循环', () => {

@@ -94,6 +94,18 @@ export const decodeFilterQuery = (query = {}, defaults = {}) => {
   };
 };
 
+/**
+ * 构造「保留筛选条件」的站内跳转目标
+ *
+ * 为什么单独立一个函数：筛选条件以 URL query 为唯一来源（见 useFilterQuerySync），
+ * 站内跳转若不带 query，就等于把筛选条件重置成默认值——典型症状是「自定义时间范围后
+ * 切个页面就回到年初至本月」。所有站内跳转统一走这里，避免以后再漏。
+ *
+ * @param {{ name: string }} target 目标路由（name 形式）
+ * @param {object}          query  当前 route.query
+ */
+export const navLocation = (target, query) => ({ ...target, query: query || {} });
+
 /** 两组筛选条件是否等价（用于打断「URL ↔ store」的互相触发） */
 export const filtersEqual = (a = {}, b = {}) => {
   const rangeA = a.dateRange || {};

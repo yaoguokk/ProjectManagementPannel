@@ -62,6 +62,11 @@ const emit = defineEmits(['update:dateRange']);
 const dateRangeType = ref('month');
 const startDate = ref('');
 const endDate = ref('');
+/**
+ * 记住用户在「自定义」里填过的日期区间。
+ * 切到「年初至本月」会把输入框改成年初~本月末，若不留存，切回「自定义」时用户填的日期就丢了。
+ */
+const customRange = ref({ start: '', end: '' });
 
 // 本地日期格式化（避免 toISOString 的时区偏移）
 const formatLocalDate = (date) => {
@@ -90,16 +95,31 @@ const syncFromProps = (range = {}) => {
   startDate.value = hasRange ? range.start : currentMonthRange.value.start;
   endDate.value = hasRange ? range.end : currentMonthRange.value.end;
   dateRangeType.value = range.type || 'month';
+
+  // 外部（URL / store）带进来的是自定义区间时，同步记住它：
+  // 切页会重建本组件，记住后才能「切走再切回」还原
+  if (dateRangeType.value === 'custom' && hasRange) {
+    customRange.value = { start: range.start, end: range.end };
+  }
 };
 
 watch(() => props.dateRange, syncFromProps, { immediate: true, deep: true });
 
 const setDateRange = (type) => {
+  // 离开「自定义」前先留存当前填写值（只在从自定义切出时记，避免被「年初至本月」覆盖）
+  if (dateRangeType.value === 'custom') {
+    customRange.value = { start: startDate.value, end: endDate.value };
+  }
+
   dateRangeType.value = type;
 
   if (type === 'month') {
     startDate.value = currentMonthRange.value.start;
     endDate.value = currentMonthRange.value.end;
+  } else if (customRange.value.start && customRange.value.end) {
+    // 切回自定义：还原上次填写的区间；从未填过时沿用当前值（不置空）
+    startDate.value = customRange.value.start;
+    endDate.value = customRange.value.end;
   }
 
   emitDateRange();

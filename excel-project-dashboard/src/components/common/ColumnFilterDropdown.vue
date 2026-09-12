@@ -276,7 +276,6 @@ watch(() => props.filter, (filter) => {
 const close = () => emit('close');
 
 const handlePointerDown = (event) => {
-  // scroll / resize 的 target 可能是 window，contains 只接受 Node
   if (event.target instanceof Node && panelRef.value?.contains(event.target)) return;
   close();
 };
@@ -288,15 +287,12 @@ const handleKeydown = (event) => {
 onMounted(() => {
   document.addEventListener('mousedown', handlePointerDown);
   document.addEventListener('keydown', handleKeydown);
-  // 表格横向滚动 / 窗口尺寸变化后 fixed 坐标会失效，直接收起面板
-  window.addEventListener('scroll', handlePointerDown, true);
-  window.addEventListener('resize', handlePointerDown);
+  // 滚动 / 缩放不在这里收起：由 DataTable 负责跟随触发按钮重定位，
+  // 否则筛选后表格高度塌缩引发的 scroll 回弹会把正在操作的面板关掉
 });
 
 onBeforeUnmount(() => {
   document.removeEventListener('mousedown', handlePointerDown);
   document.removeEventListener('keydown', handleKeydown);
-  window.removeEventListener('scroll', handlePointerDown, true);
-  window.removeEventListener('resize', handlePointerDown);
 });
 </script>

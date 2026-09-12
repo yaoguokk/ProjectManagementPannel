@@ -51,6 +51,16 @@ describe('useDataTable > 列显隐', () => {
     expect(table.visibleColumns.value.map((col) => col.label)).toEqual(['项目编号', '验收倒计时']);
   });
 
+  test('initialSelectedLabels 可传函数，按当前列模型延迟求值', () => {
+    const table = createTable({
+      columns: [...COLUMNS, { key: 'ledger', label: '台账列' }],
+      initialSelectedLabels: () => ['项目编号'],
+    });
+
+    expect(table.selectedColumnLabels.value).toEqual(['项目编号']);
+    expect(table.visibleColumns.value.map((col) => col.label)).toEqual(['项目编号']);
+  });
+
   test('pruneMissingColumns 会清掉数据中已不存在的选中列', async () => {
     const columns = ref([...COLUMNS]);
     const table = useDataTable({

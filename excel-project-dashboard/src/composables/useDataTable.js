@@ -29,7 +29,8 @@ import { useTablePaging } from './useTablePaging';
  * @param {Ref|Function|Array} options.columns       列定义（列模型见 utils/tableModel）
  * @param {Ref|Function|Array} options.rows          已做业务筛选、但尚未搜索/列筛选/排序/分页的行
  * @param {Object}   [options.searchValues]          { getBasicValues, getGlobalValues }，缺省表示不启用关键词搜索
- * @param {string[]} [options.initialSelectedLabels] 初始可见列（缺省 = 全部非 fixed 列）
+ * @param {string[]|Function} [options.initialSelectedLabels] 初始可见列；可传函数延迟到「首次拿到列」时求值
+ *        （缺省 = 全部非 fixed 列）
  * @param {boolean}  [options.pruneMissingColumns]   数据列变化时是否清理已失效的选中列（D: true；E: false）
  * @param {number}   [options.initialPageSize]
  */
@@ -61,11 +62,19 @@ export const useDataTable = ({
   const selectedColumnLabels = ref([]);
   const columnsInitialized = ref(false);
 
+  /**
+   * 初始勾选的列：支持直接给数组（D 区域）或给一个读取当前列模型的函数（E 区域
+   * 需要按列定义标记过滤掉「项目清单」列）。
+   */
+  const resolveInitialLabels = () =>
+    (typeof initialSelectedLabels === 'function' ? initialSelectedLabels() : initialSelectedLabels);
+
   // 首次拿到列时按「声明的初始列 / 全部可选列」初始化，与既有 D/E 行为一致
   watch(() => allColumns.value.length, (length) => {
     if (columnsInitialized.value || length === 0) return;
-    selectedColumnLabels.value = initialSelectedLabels
-      ? [...initialSelectedLabels]
+    const initial = resolveInitialLabels();
+    selectedColumnLabels.value = initial
+      ? [...initial]
       : [...selectableColumnLabels.value];
     columnsInitialized.value = true;
   }, { immediate: true });

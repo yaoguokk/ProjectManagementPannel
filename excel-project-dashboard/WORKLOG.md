@@ -2,6 +2,149 @@
 
 ---
 
+## [2026-09-11] 修复：表头筛选「空选」后面板自动退出
+
+**总目标**：E 区域（含项目清单列）表头筛选里把勾选清空后，筛选面板不应自动关闭，方便用户重新勾选。
+
+**状态**：✅ 完成
+
+**干到哪了**：
+- [x] 定位根因：`ColumnFilterDropdown` 自监听 window `scroll`（capture）/ `resize`，任何滚动直接收起面板；空选 → 表格行数骤减 → 页面高度塌缩、scrollTop 回弹产生 scroll 事件 → 面板被关掉。
+- [x] `ColumnFilterDropdown.vue`：移除 scroll / resize 关闭逻辑，只保留「点击外部」「Escape」两种关闭方式。
+- [x] `DataTable.vue`：持有触发按钮元素（`anchorEl`），滚动 / 缩放时重新取 `getBoundingClientRect` 更新锚点，面板跟随重定位；触发按钮滚出视口才 `close-filter`。
+- [x] 回归测试：`tests/costTableHeaderFilter.test.js` 新增「空选后面板不退出：滚动 / 缩放只重定位，触发按钮滚出视口才收起」（+1 条）。
+- [x] 文档：CLAUDE.md 新增 Bug #7。
+
+**验证证据**：
+- `npm run test:run`：326/326 通过（31 个测试文件，较上一轮 325 增 1）。
+- 真机核对（Chrome + 真实三份台账，206 行）：默认列「状态」空选 → 表格筛空、面板保持「已选 0 / 2 类」；横向 +10px / 纵向 +10px 滚动后面板仍在；把触发按钮滚出视口后面板按设计收起且筛选状态保留。项目清单列「单位」（206 行 1 类取值）空选 → 同样面板保持、scroll / resize 不关闭、点外部才关闭。console error = 0。
+- 本次改动文件 `read_lints` 0 报错；临时验证脚本与截图已删除。
+
+**边界**：
+- 空选语义未变：显式空选 = 该列筛空（Excel 口径），面板保持打开是为了方便重新勾选。
+- 「点击外部」「Escape」关闭行为不变；触发按钮滚出视口（横向滚出表格容器 / 纵向滚离页面）仍会收起面板，此时 fixed 坐标已无意义。
+- 该修复在共用内核 `DataTable` / `ColumnFilterDropdown` 层完成，D 区域（无表头筛选）与后续新表格自动受益。
+
+---
+
+## [2026-09-11] 时间范围「年初至本月 / 自定义」切换不丢自定义日期
+
+**总目标**：在「年初至本月」与「自定义」两个按钮之间来回切换时，用户填过的自定义日期不应被覆盖成默认口径。
+
+**状态**：✅ 完成
+
+**干到哪了**：
+- [x] 复现：填自定义 `2026-02-01 ~ 2026-05-31` 后切到「年初至本月」，输入框被改成年初~本月末；再切回「自定义」，输入框沿用被改过的值（用户填的日期丢了）。
+- [x] `components/filters/DateRangeFilter.vue` 新增 `customRange` 记忆：
+  - **只在从自定义切出时**留存当前填写值（放在 `setDateRange` 的守卫里，避免被「年初至本月」覆盖）；
+  - 切回自定义时还原该区间；从未填过则沿用当前值，不置空；
+  - `syncFromProps` 遇到外部（URL / store）带入的自定义区间时同步记忆 —— 切页会重建组件，记住后才能「切走再切回」还原。
+- [x] 新增 `tests/dateRangeFilter.test.js`（5 条组件级用例）。
+- [x] 文档：README 新增「时间范围筛选（B 区域）」；CLAUDE.md 新增改进 #10。
+
+**验证证据**：
+- `npm run test:run`：325/325 通过（31 个测试文件，较上一轮 320 增 5）。
+- `npm run build`：构建通过（单文件 `dist/index.html` 1,824.68 kB）。
+- 真机核对（Chrome）：填 `2026-02-01 ~ 2026-05-31` → 「年初至本月」→「自定义」，输入框还原为 `["2026-02-01","2026-05-31"]`、激活按钮为「自定义」；切到「成本管控」后重复同样操作同样还原；URL 始终为 `#/overview?start=2026-02-01&end=2026-05-31&range=custom`；console error = 0。
+- 本次改动文件 `read_lints` 0 报错；临时验证脚本已删除。
+
+**边界**：
+- 只改「切换按钮时的日期保留」；「年初至本月」本身的口径（当年 1/1 ~ 本月末）未变，选中它时仍是本月口径。
+- 记忆只覆盖「自定义区间」；切到「年初至本月」期间生效的仍是年初至本月（不会偷偷用自定义区间）。
+- 记忆存在组件内 + props 同步，因此切页/刷新都能还原；**关闭浏览器重开**仍回默认区间（与上一轮的边界一致，未引入 localStorage）。
+- 自定义区间的请求时机未变：只有输入框 `change` 时才 emit（填一半不会即时生效）。
+
+---
+
+## [2026-09-11] 修复：自定义时间范围切换页面后被重置（站内跳转带 query）
+
+**总目标**：在「数据筛选」里自定义了时间范围后，切换页面不应恢复默认；刷新、上传后也应保持。
+
+**状态**：✅ 完成
+
+**干到哪了**：
+- [x] 复现（Chrome）：设置自定义 `2026-02-01 ~ 2026-05-31` 后 URL 为 `#/overview?start=…&end=…&range=custom`；点顶部导航切页后 URL 变成 `#/projects`，激活按钮回到「年初至本月」。
+- [x] 定位根因：筛选条件以 URL query 为唯一来源（`useFilterQuerySync` 监听 `route.query` 并写回 store），而顶部导航用 `:to="{ name: item.name }"` **不带 query** → 跳转后 query 变空 → 空 query 解码成默认值写回 store → 筛选被重置。`UploadSection` 的「整批上传后跳转概览」是同类隐患（同样会清 query）。
+- [x] `utils/filterQuery.js`：新增 `navLocation(target, query)` = `{ ...target, query: query || {} }`，作为站内跳转的统一出口并写明原因。
+- [x] `App.vue`：顶部导航改为 `:to="navLocation(item, route.query)"`（`useRoute()` 取当前 query）。
+- [x] `components/sections/UploadSection.vue`：`handleBatchDone` 的跳转改为 `router.push(navLocation({ name: 'overview' }, route.query))`。
+- [x] 测试：新增 `tests/appNavigation.test.js`（4 条：从 URL 恢复筛选、切页保留、多次切页保留、默认筛选不进 URL）；`tests/filterQuery.test.js` 追加 `navLocation` 用例。
+- [x] 文档：README「页面路由」与 CLAUDE.md「路由与视图」补「站内跳转必须带 query」约束，并新增改进 #9。
+
+**验证证据**：
+- `npm run test:run`：320/320 通过（30 个测试文件，较上一轮 315 增 5）。
+- `npm run build`：构建通过（单文件 `dist/index.html` 1,824.47 kB）。
+- 真机核对（Chrome，1440/1600px）：设置自定义 `2026-02-01 ~ 2026-05-31` 后 —— 依次切到「项目明细 / 成本管控 / 概览」，URL 均带 `?start=2026-02-01&end=2026-05-31&range=custom`，输入框与激活按钮（自定义）均保留；**刷新页面**后保留；**上传三份台账**（会触发整批完成后的跳转）后保留；上传后进「成本管控」仍按该区间过滤（概览行「统计项目 86 个」，默认区间为 206 个，证明筛选真实生效）；console error = 0。
+- 本次改动文件 `read_lints` 0 报错；临时验证脚本已删除。
+
+**边界**：
+- 只改「跳转是否带 query」，不改筛选语义：默认筛选仍不写进 URL（`#/cost` 保持干净）。
+- 筛选状态仍只存内存 + URL；**关闭浏览器重新打开**会回到默认区间（URL 里带着 query 的书签/链接仍可还原）。若要跨会话记住，需要再加 localStorage，本轮未做。
+- 新加站内跳转时统一用 `navLocation`，否则会重现本条问题。
+
+---
+
+## [2026-09-11] E 区域全局搜索扩到全部字段
+
+**总目标**：上一轮把台账列纳入 E 区域列设置后，全局搜索仍只覆盖原来那组成本业务字段（台账列「看得见搜不到」）；本轮把全局搜索扩到行的全部字段。
+
+**状态**：✅ 完成
+
+**干到哪了**：
+- [x] `components/CostControl/CostTable.vue`：`getGlobalSearchValues` 从「手写字段清单」改为 `[...pickAllValues(row, GLOBAL_SEARCH_EXCLUDED_KEYS), 超支/正常, overCategories.join('、'), ...成本分类名]`，复用 `utils/tableSearch` 的 `pickAllValues`（与 D 区域同一套语义）。
+- [x] 排除项 `GLOBAL_SEARCH_EXCLUDED_KEYS = ['id', 'categories']`：`id` 无意义（D 区域同样排除），`categories` 内含合同明细对象、字符串化后只是噪音；成本分类名单独以标签纳入，保证「搜分类名能命中」。
+- [x] 成本口径文案（超支 / 正常、超支成本类型）不是行的原始字段，但用户会照着表格搜，显式保留，避免回归。
+- [x] 搜索帮助 tooltip 的 `global-fields-hint` 同步改为「项目全部字段（含台账原始列、成本分类与合计）以及超支 / 正常、成本分类名等文案」。
+- [x] 新增 `tests/costTableSearch.test.js`（5 条组件级用例，走真实搜索框交互）。
+- [x] 文档：README 新增「关键词搜索（E 区域）」章节；CLAUDE.md 新增改进 #8，并把上一条目的「搜索口径未改」限制标注为已解除。
+
+**验证证据**：
+- `npm run test:run`：315/315 通过（29 个测试文件，较上一轮 310 增 5）。
+- `npm run build`：构建通过（单文件 `dist/index.html` 1,824.40 kB）。
+- 真机核对（Chrome + 真实三份台账，E 区域 206 行）：取台账专有列「立项提交时间」首行值搜索 —— **基础搜索 0 行**（表格显示空态），**全局搜索 58 行**；全局「已结算」79 行、「超支」5 行（与图表概览「超支项目 5 个」一致）、「项目分包费」206 行；清空关键词后回到 206 行；console error = 0。
+- 本次改动文件 `read_lints` 0 报错；临时验证脚本已删除。
+
+**边界**：
+- 只改搜索取值口径，不改搜索语义（基础 / 全局、或 / 与、多关键词分隔符）与筛选链路顺序。
+- 空关键词仍直接返回全部行（`matchesSearchQuery` 提前返回），因此不会为每行构建全部字段值，千行级无额外开销。
+- 搜索覆盖面变大意味着「更容易命中」：数值字段（各合计）与台账列都参与匹配，这是「全字段搜索」的预期行为。
+- D 区域未动（它本来就是 `pickAllValues(project, ['id'])`）。
+
+---
+
+## [2026-09-11] E 区域列设置纳入「项目清单」全部列（默认仍是当前成本列）
+
+**总目标**：参考 D 区域的列设置，让 E 区域列设置里能勾选到项目清单（台账）里的其他列；但页面默认展示保持现在的成本列不变。
+
+**状态**：✅ 完成
+
+**干到哪了**：
+- [x] `data/costData.js`：`buildCostRow` 透传台账原始列（`...project`，派生字段随后覆盖同名值，成本口径不变），使成本行具备「还原项目清单列」的数据基础。
+- [x] `utils/costTableColumns.js`：
+  - 新增 `buildLedgerColumns(rows, usedLabels)`：从成本行提取台账列（`extractColumnNames`），排除成本行派生字段（新增 `COST_ROW_FIELDS`）与已被成本列占用的同名标签；列的 `key` 加 `ledger:` 前缀，标 `ledger: true` + `ledgerName`；宽度沿用 `PROJECT_COLUMN_WIDTHS`，金额列（`isAmountColumn`）右对齐 + 数值筛选，其余走文本取值筛选。
+  - 新增 `defaultCostColumnLabels(columns)`：默认勾选 = 非台账列。
+  - `buildCostColumns` 列序改为「固定列 → 分类列 → 合计/状态列 → 项目清单列 → 操作」；`buildCostCell` 增加台账列分支（`getColumnValue` 取原值，金额千分位，空值 `-`）。
+- [x] `composables/useDataTable.js`：`initialSelectedLabels` 支持传函数（按当前列模型延迟求值），供 E 区域「默认 = 非台账列」使用；D 区域行为不变。
+- [x] `components/CostControl/CostTable.vue`：`initialSelectedLabels` 传函数、列设置的 `defaultColumns` 改为成本列（「默认」按钮一键回成本列）。
+- [x] `data/costData.js` 导出：新增台账列解析 `resolveLedgerExportColumn`（勾选才导出，文本取原值、金额导出为数值）；缺省导出改为「默认列」（不含项目清单列）。
+- [x] 测试：新增 `tests/costTableColumnSettings.test.js`（5 条，组件交互：可选列含台账列且默认未勾选、同名不重复、默认不展示、勾选后按原值展示、默认按钮还原）；`costTableColumns` 追加 6 条、`costData` 追加 3 条、`useDataTable` 追加 1 条。
+- [x] 文档：README 新增「列设置（E 区域）」章节 + 特性条更新；CLAUDE.md 新增改进 #7。
+
+**验证证据**：
+- `npm run test:run`：310/310 通过（28 个测试文件，较上一轮 295 增 15）。
+- `npm run build`：构建通过（单文件 `dist/index.html` 1,824.39 kB）。
+- 真实数据探针（node 环境跑真实三份台账）：206 条成本行 → 列定义 96 个台账列；202 行有「项目状态 / 立项收入(元)」，单元格分别为 `已结算` / `30,850`；自筹行「单位」单元格为公司全名。
+- 真机核对（Chrome + 真实三份台账）：列设置 **114 项**（18 成本列 + 96 台账列）、默认勾选 **18**；勾「单位」「项目状态」后表头 20 列，首行「单位」= `南方电网传感科技（广东）有限公司`、「项目状态」= `-`（该行是自筹台账，本就没有此列）；台账列表头有筛选漏斗；点「默认」回到 18 列；console error = 0。
+- 本次改动文件 `read_lints` 0 报错；探针与临时配置已删除。
+
+**边界**：
+- 项目清单列只进列设置、默认不勾选；列显隐与列宽仍只存组件内存，刷新回到默认（与既有行为一致）。
+- 经营 / 自筹两类台账列名不同，取并集；**某行缺该列时单元格显示 `-`（金额列显示 `0`）**，这是既有占位口径，不是取数失败。
+- 关键词搜索口径当时未改（仍是原来那组成本业务字段），台账列「可见但不在全局搜索范围内」；该限制已由上一条「E 区域全局搜索扩到全部字段」解除。
+- 不改成本计算口径：透传台账列是加法，派生字段（projectTypeLabel / 合计 / 超支判定）仍覆盖同名值。
+
+---
+
 ## [2026-09-11] 页面职责归位：数据导入并入概览、超支分布图只留 E 区域
 
 **总目标**：概览页不再出现「超支项目分布」图（该图属于 E 区域成本管控）；顶部导航取消「数据导入」独立项，把数据导入（A 区域）并入概览页。

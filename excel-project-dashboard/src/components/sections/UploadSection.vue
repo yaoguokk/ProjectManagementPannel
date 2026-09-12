@@ -25,7 +25,8 @@
  * 因此新增数据集（如「预算表」）时本组件零改动。
  * 整批上传结束后跳转到概览页，让用户立刻看到结果。
  */
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
+import { navLocation } from '../../utils/filterQuery';
 import { buildImportMessage, datasetOptions } from '../../utils/uploadRouting';
 import { useDataStore } from '../../stores/dataStore';
 import { useToast } from '../../composables/useToast';
@@ -41,6 +42,7 @@ const UPLOAD_DESCRIPTION = '任一入口均可一次选择 1-3 个文件，按�
 const uploadOptions = datasetOptions();
 const dataStore = useDataStore();
 const router = useRouter();
+const route = useRoute();
 const { showSuccess, showError } = useToast();
 
 const handleFileUploaded = (fileData) => {
@@ -61,7 +63,8 @@ const handleFileUploaded = (fileData) => {
  */
 const handleBatchDone = ({ successCount } = {}) => {
   if (successCount > 0) {
-    router.push({ name: 'overview' });
+    // 带上当前筛选条件：否则跳转会清掉 URL query，把已设的时间范围重置成默认
+    router.push(navLocation({ name: 'overview' }, route.query));
   }
 };
 

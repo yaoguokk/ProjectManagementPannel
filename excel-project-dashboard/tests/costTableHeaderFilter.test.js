@@ -161,6 +161,35 @@ describe('E 区域表头筛选下拉', () => {
     expect(wrapper.text()).toContain('清除表头筛选（1）');
   });
 
+  test('空选后面板不退出：滚动 / 缩放只重定位，触发按钮滚出视口才收起', async () => {
+    const wrapper = mountTable();
+    await openFilter(wrapper, '状态');
+
+    // 全不勾 = 显式空选：表格被筛空，但面板必须保持打开，方便重新勾选
+    await panelOf(wrapper).find('input[type="checkbox"]').setValue(false);
+    expect(wrapper.findAll('tbody tr')).toHaveLength(0);
+    expect(panelOf(wrapper).exists()).toBe(true);
+
+    // 筛空会让页面高度塌缩、scrollTop 回弹，历史上这种 scroll 会把面板关掉；
+    // 现在只应触发重定位。jsdom 无布局，手动给触发按钮一个视口内坐标。
+    const trigger = headerOf(wrapper, '状态').find('.filter-trigger').element;
+    trigger.getBoundingClientRect = () =>
+      ({ top: 10, bottom: 30, left: 100, right: 140, width: 40, height: 20, x: 100, y: 10 });
+    window.dispatchEvent(new Event('scroll'));
+    window.dispatchEvent(new Event('resize'));
+    await wrapper.vm.$nextTick();
+    expect(panelOf(wrapper).exists()).toBe(true);
+
+    // 触发按钮滚出视口后 fixed 坐标失去意义，面板才收起
+    trigger.getBoundingClientRect = () =>
+      ({ top: -120, bottom: -100, left: 100, right: 140, width: 40, height: 20, x: 100, y: -120 });
+    window.dispatchEvent(new Event('scroll'));
+    await wrapper.vm.$nextTick();
+    expect(panelOf(wrapper).exists()).toBe(false);
+    // 收起不影响筛选状态本身
+    expect(wrapper.text()).toContain('清除表头筛选（1）');
+  });
+
   test('面板重置表头继承的 nowrap，数值列控件才不会被裁掉', async () => {
     const wrapper = mountTable();
     await openFilter(wrapper, '差额合计');

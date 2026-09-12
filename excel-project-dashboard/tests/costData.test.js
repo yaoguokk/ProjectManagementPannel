@@ -587,3 +587,37 @@ describe('项目分包费 > 关键词规则口径', () => {
     expect(ruleStats.subcontract.excluded).toBe(2);
   });
 });
+
+describe('成本行透传台账原始列（供 E 区域「项目清单」列使用）', () => {
+  test('台账原始列透传到成本行，派生字段仍覆盖同名台账值', () => {
+    const project = makeProject({ '项目状态': '待终验', '立项收入(元)': '500000' });
+    const { rows } = calculateCostAnalysis([project], [], { dateRange: DATE_RANGE });
+
+    expect(rows[0]['项目状态']).toBe('待终验');
+    expect(rows[0]['立项收入(元)']).toBe('500000');
+    // 成本口径不受影响：内部项目类型与合计仍来自派生计算
+    expect(rows[0].projectTypeLabel).toBe('研究咨询类');
+    expect(rows[0].budgetTotal).toBe(3000000);
+  });
+
+  test('显式导出项目清单列时取台账原值（金额导出为数值）', () => {
+    const project = makeProject({ '项目状态': '待终验', '立项收入(元)': '500000' });
+    const { rows } = calculateCostAnalysis([project], [], { dateRange: DATE_RANGE });
+
+    const { headers, data } = buildCostExportTable(rows, ['项目编号', '项目状态', '立项收入(元)']);
+
+    expect(headers).toEqual(['项目编号', '项目状态', '立项收入(元)']);
+    expect(data[0]).toEqual(['PRJ-001', '待终验', 500000]);
+  });
+
+  test('缺省导出不含项目清单列（与表格默认展示的列一致）', () => {
+    const project = makeProject({ '项目状态': '待终验' });
+    const { rows } = calculateCostAnalysis([project], [], { dateRange: DATE_RANGE });
+
+    const { headers } = buildCostExportTable(rows);
+
+    expect(headers).toContain('项目编号');
+    expect(headers).not.toContain('项目状态');
+    expect(headers).not.toContain('项目分包费(元)');
+  });
+});

@@ -28,11 +28,11 @@
         </button>
       </div>
       <div class="flex flex-wrap items-center justify-end gap-2">
-        <!-- 列设置（公共组件） -->
+        <!-- 列设置（公共组件）：可选成本列 + 项目清单列，「默认」= 成本列 -->
         <ColumnSelector
           v-model:selectedColumns="selectedColumnLabels"
           :availableColumns="allColumnLabels"
-          :defaultColumns="allColumnLabels"
+          :defaultColumns="defaultColumnLabels"
         />
 
         <!-- 搜索框（公共组件） -->
@@ -41,7 +41,7 @@
           v-model:mode="searchMode"
           v-model:matchMode="searchMatchMode"
           basic-fields-hint="项目编号、项目名称、项目经理、业务部所。"
-          global-fields-hint="项目的所有成本业务字段。"
+          global-fields-hint="项目全部字段（含台账原始列、成本分类与合计）以及超支 / 正常、成本分类名等文案。"
           @change="handleSearch"
         />
 
@@ -192,7 +192,8 @@ import CostDetailModal from './CostDetailModal.vue';
 import ImageExportModal from '../common/ImageExportModal.vue';
 import ColumnSelector from '../common/ColumnSelector.vue';
 import TableSearchBox from '../common/TableSearchBox.vue';
-import { buildCostColumns, buildCostCell } from '../../utils/costTableColumns';
+import { pickAllValues } from '../../utils/tableSearch';
+import { buildCostColumns, buildCostCell, defaultCostColumnLabels } from '../../utils/costTableColumns';
 import { DepartmentDisplay, DEPARTMENT_DISPLAY_OPTIONS } from '../../utils/departmentDisplay';
 
 const props = defineProps({
@@ -217,8 +218,10 @@ const filterOptions = [
   { label: '未超支', value: OverBudgetFilter.NORMAL },
 ];
 
-// 分类列由数据驱动，新增成本分类后表格自动扩展
+// 分类列由数据驱动，新增成本分类后表格自动扩展；
+// 列设置里同时提供「项目清单」（台账）的其余列，但默认只勾选成本列
 const allColumns = computed(() => buildCostColumns(props.rows));
+const defaultColumnLabels = computed(() => defaultCostColumnLabels(allColumns.value));
 
 // 搜索取值口径
 const getBasicSearchValues = (row) => [
@@ -228,16 +231,19 @@ const getBasicSearchValues = (row) => [
   row.department,
 ];
 
+/**
+ * 全局搜索不纳入的字段：id（无意义）与 categories（内含合同明细对象，字符串化后只是噪音）。
+ * 其余字段——台账原始列（项目清单列）+ 程序字段 + 成本派生字段——全部参与搜索。
+ */
+const GLOBAL_SEARCH_EXCLUDED_KEYS = ['id', 'categories'];
+
+/**
+ * 全局搜索取值口径：行内全部字段 + 成本口径的可读文案。
+ * 后三项是界面文案（超支 / 正常、超支成本类型、成本分类名），并不以原始字段存在，
+ * 但用户会照着表格去搜，所以必须保留。
+ */
 const getGlobalSearchValues = (row) => [
-  row.projectCode,
-  row.projectName,
-  row.manager,
-  row.department,
-  // 展示列为台账原始「项目类型」，搜索口径需与之一致；同时保留内部口径，输入「经营 / 自筹」仍可命中
-  row.projectTypeLabel,
-  row.projectType,
-  row.planFinalDate,
-  row.actualFinalDate,
+  ...pickAllValues(row, GLOBAL_SEARCH_EXCLUDED_KEYS),
   row.hasOverBudget ? '超支' : '正常',
   row.overCategories.join('、'),
   ...row.categories.map((item) => item.label),
@@ -273,6 +279,8 @@ const {
   columns: allColumns,
   // 业务筛选（超支）在链路之外，交给内核做搜索 → 列筛选 → 排序 → 分页
   rows: () => filterCostRows(props.rows, overFilter.value),
+  // 默认勾选成本列（= 当前展示的列），项目清单列需在列设置里手动勾选
+  initialSelectedLabels: () => defaultColumnLabels.value,
   searchValues: {
     getBasicValues: getBasicSearchValues,
     getGlobalValues: getGlobalSearchValues,
